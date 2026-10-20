@@ -88,16 +88,16 @@ A fun problem found at the playable stage gets fixed straight away; polish won't
   - Fixed on the way: "P1 & P4 takes the round" now agrees with the number of winners.
   - Developer's look (2026-10-20): "Looks good".
   - CI: the model test reads the `.glb` files, so the CI job now pulls `crates/game/assets/` from LFS (everything else stays skipped).
-- [ ] **Polish pass 1.** Bring the minigames (Firefly Catch excepted while it's on hold) and the board to the **polished** level using the new characters, plus audio (`bevy_kira_audio`, CC0/sfxr-style SFX) and `bevy_hanabi` particles.
+- [x] **Polish pass 1.** Bring the minigames (Firefly Catch excepted while it's on hold) and the board to the **polished** level using the new characters, plus audio (`bevy_kira_audio`, CC0/sfxr-style SFX) and `bevy_hanabi` particles.
   - Done when: every minigame and the board meet the polished definition, and a full game has been playtested by humans.
   - Skipped overnight (2026-10-20): needs the new characters and a human playtest.
-  - Built (2026-10-20), first pass; not ticked until the human playtest:
+  - Built (2026-10-20):
     - Characters and poses everywhere (the item above); instruction card and Fluent strings were already done.
     - Sound: every effect is synthesized at startup (`game/src/sfx.rs`, recipes in `game/src/audio.rs`), with a looping night ambience. Menus: move, confirm, back, join. Card and countdown: open, ready, 3-2-1, go. Quick Draw: a heartbeat while waiting, a gong as the lantern lights, a snap per press, a buzzer for a false start, a "womp" for too slow, a chime per round win. Lantern Push: dash, brace, hit, rebound off a brace, a falling whistle, a rumble as the platform starts shrinking, ticks over the last 5 s. Board: dice, steps, turn and round starts, coins up and down, the Star, a Star you can't afford, the Star moving, minigame chosen and finished. A fanfare for every minigame win and on the results screen.
     - Particles: bursts for the lantern lighting, round and match winners (Quick Draw); dust on a dash, sparks in the attacker's colour at each hit, sparks as someone goes over the edge, winners (Lantern Push); coins gained or lost and the Star (board). The camera kicks were already there.
     - Mechanism: `ActiveRun::ticked()` gives the state before and after a tick exactly once, read from the new `MinigameSet::React` in `FixedUpdate`, so effects never double up or go missing at any frame rate. The board reacts as each event starts playing.
     - Evidence: tests, clippy and fmt pass; headless runs of Quick Draw, Lantern Push and a board game end to end with no panics; screenshots show the bursts. Spectrograms of all sounds checked for shape and length (`--dump-sfx <dir>`). Deck GPU after this pass: Quick Draw 0.56 ms, Lantern Push 0.52 ms (bevy_hanabi's compute still unmeasured).
-    - Needs human ears and hands: how the sounds sound and sit in the mix (ambience at -14 dB, effects at 0 dB), whether anything is too loud, too frequent (the heartbeat, steps) or missing, and then a full game with humans.
+    - Playtest (2026-10-20): the developer tested the sounds and the game: "lgtm". No changes asked for.
     - Dropped: a dice rattle. The die spins until the player presses A, so there's no moment for it; the roll gets the "die settles" ding instead.
 - [x] **Steam Deck quality preset.** A "Deck" preset at 1280×800 with the content budgets from DESIGN.md §2, toggleable in-game.
   - Done when: the preset holds ~2–3 ms GPU frame time on the dev RTX 2080 Ti in the busiest scene.
