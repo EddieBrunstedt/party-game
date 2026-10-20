@@ -9,7 +9,8 @@ use sim_core::{
 
 pub const POINTS_TO_WIN: u8 = 3;
 pub const MAX_ROUNDS: u8 = 7;
-pub const INTRO_TICKS: u16 = 120;
+/// The opening countdown, the same in every minigame.
+pub const INTRO_TICKS: u16 = sim_core::COUNTDOWN_TICKS;
 /// The lantern lights somewhere in this window after a round starts (1.5 s to 5 s).
 pub const WAIT_TICKS: (u16, u16) = (90, 300);
 /// Seats that haven't pressed this long after the lantern lights are too slow.

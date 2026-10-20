@@ -501,10 +501,8 @@ fn banner_text(active: &ActiveRun<QuickDraw>) -> (String, String) {
         return banner;
     }
     match game.phase {
-        Phase::Intro { .. } => (
-            tr!("quick-draw-title"),
-            tr!("quick-draw-rules", points = POINTS_TO_WIN as u32),
-        ),
+        // The shared countdown (crate::intro) is drawn over this.
+        Phase::Intro { .. } => (String::new(), String::new()),
         Phase::Waiting { .. } => (
             tr!("quick-draw-wait"),
             tr!("quick-draw-round", round = game.round as u32),

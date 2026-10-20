@@ -23,5 +23,9 @@ pub use run::{Run, RunConfig};
 /// Every simulation steps at this fixed rate.
 pub const TICK_HZ: u32 = 60;
 
+/// Every minigame opens with a 3-2-1 countdown this long, in which nobody can act. The rules
+/// are explained before the run starts, on the client's instruction card.
+pub const COUNTDOWN_TICKS: u16 = 3 * TICK_HZ as u16;
+
 /// Seats are fixed at four; inactive seats simply send [`Input::default`].
 pub const MAX_PLAYERS: usize = 4;

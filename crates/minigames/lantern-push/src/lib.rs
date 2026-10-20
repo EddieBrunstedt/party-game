@@ -9,7 +9,8 @@ use sim_core::{
     PlayerSetup, Rng, Seat,
 };
 
-pub const INTRO_TICKS: u16 = 240;
+/// The opening countdown, the same in every minigame.
+pub const INTRO_TICKS: u16 = sim_core::COUNTDOWN_TICKS;
 /// Ticks of play before time runs out.
 pub const PLAY_TICKS: u32 = 75 * 60;
 /// The platform starts shrinking after this many ticks of play...

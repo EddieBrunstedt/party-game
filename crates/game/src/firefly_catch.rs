@@ -8,8 +8,9 @@ use std::f32::consts::PI;
 use bevy::prelude::*;
 use bevy_hanabi::prelude::*;
 use minigame_firefly_catch::{
-    ARENA_HALF_EXTENTS, CAUGHT_LINGER_TICKS, Firefly, FireflyCatch, FireflyKind, FireflyStatus,
-    HOP_TICKS, INTRO_TICKS, LEAVING_LINGER_TICKS, NET_COOLDOWN_TICKS, PLAYER_RADIUS, Phase, State,
+    ARENA_HALF_EXTENTS, CAUGHT_LINGER_TICKS, FIREFLY_RADIUS, Firefly, FireflyCatch, FireflyKind,
+    FireflyStatus, HOP_TICKS, LEAVING_LINGER_TICKS, NET_COOLDOWN_TICKS, NET_RADIUS, NET_REACH,
+    PLAYER_RADIUS, Phase, State, net_reaches,
 };
 use sim_core::physics::Vec2 as SimVec2;
 use sim_core::{Format, Seat, TICK_HZ};
@@ -66,7 +67,16 @@ struct FireflyView {
     id: u32,
     material: Handle<StandardMaterial>,
     light: Entity,
+    /// The glowing spot on the ground under it; see [`FireflySpot`].
+    spot: Entity,
     generation: u32,
+}
+
+/// Marks where a firefly really is on the meadow floor, which is hard to judge from the
+/// floating glow alone. It pulses while the firefly is tired, the moment to catch it.
+#[derive(Component)]
+struct FireflySpot {
+    material: Handle<StandardMaterial>,
 }
 
 #[derive(Component)]
@@ -74,6 +84,15 @@ struct PlayerView {
     seat: Seat,
     net: Entity,
     disc: Entity,
+    /// The ring on the ground that shows exactly where the net catches; see [`NetReach`].
+    reach: Entity,
+}
+
+/// A firefly whose ground spot touches this ring is caught by a swing. It glows brighter when
+/// a catchable firefly is inside, and flashes while the net is open.
+#[derive(Component)]
+struct NetReach {
+    material: Handle<StandardMaterial>,
 }
 
 #[derive(Component)]
@@ -290,6 +309,27 @@ fn spawn_player(
         })
         .id();
     commands.entity(folk.root).add_child(net);
+    // The catch condition is the firefly's centre within this distance of the net's centre,
+    // so the ring is drawn at exactly that radius.
+    let reach_radius = NET_RADIUS + FIREFLY_RADIUS;
+    let reach_material = materials.add(emissive_material(seat_color(seat), REACH_IDLE));
+    let reach = commands
+        .spawn((
+            SCOPE,
+            NetReach {
+                material: reach_material.clone(),
+            },
+            Mesh3d(
+                meshes.add(
+                    Torus::new(reach_radius - 0.05, reach_radius)
+                        .mesh()
+                        .major_resolution(48),
+                ),
+            ),
+            MeshMaterial3d(reach_material),
+            Transform::from_translation(world(player.net_centre(player.facing)) + Vec3::Y * 0.04),
+        ))
+        .id();
     let disc = commands
         .spawn((
             SCOPE,
@@ -302,9 +342,12 @@ fn spawn_player(
             Transform::from_translation(world(player.body.pos) + Vec3::Y * 0.03),
         ))
         .id();
-    commands
-        .entity(folk.root)
-        .insert(PlayerView { seat, net, disc });
+    commands.entity(folk.root).insert(PlayerView {
+        seat,
+        net,
+        disc,
+        reach,
+    });
 }
 
 /// Spawn views for new fireflies and remove views whose firefly is gone.
@@ -315,7 +358,7 @@ fn sync_fireflies(
     effects: Res<Effects>,
     active: Res<ActiveRun<FireflyCatch>>,
     views: Query<(Entity, &FireflyView)>,
-    mut mesh: Local<Option<Handle<Mesh>>>,
+    mut mesh: Local<Option<(Handle<Mesh>, Handle<Mesh>)>>,
 ) {
     let game = &active.run.game;
     for (entity, view) in &views {
@@ -323,10 +366,16 @@ fn sync_fireflies(
             view.generation == active.generation && game.fireflies.iter().any(|f| f.id == view.id);
         if !alive {
             commands.entity(entity).despawn();
+            commands.entity(view.spot).despawn();
         }
     }
-    let mesh = mesh
-        .get_or_insert_with(|| meshes.add(Sphere::new(0.14).mesh().ico(2).expect("small ico")))
+    let (mesh, spot_mesh) = mesh
+        .get_or_insert_with(|| {
+            (
+                meshes.add(Sphere::new(0.14).mesh().ico(2).expect("small ico")),
+                meshes.add(Cylinder::new(FIREFLY_RADIUS, 0.02)),
+            )
+        })
         .clone();
     for firefly in &game.fireflies {
         if views
@@ -364,6 +413,19 @@ fn sync_fireflies(
         } else {
             1.0
         };
+        let spot_material = materials.add(emissive_material(glow, SPOT_GLOW));
+        let spot = commands
+            .spawn((
+                SCOPE,
+                FireflySpot {
+                    material: spot_material.clone(),
+                },
+                Mesh3d(spot_mesh.clone()),
+                MeshMaterial3d(spot_material),
+                Transform::from_translation(world(firefly.body.pos) + Vec3::Y * 0.03)
+                    .with_scale(Vec3::ZERO),
+            ))
+            .id();
         commands
             .spawn((
                 SCOPE,
@@ -371,6 +433,7 @@ fn sync_fireflies(
                     id: firefly.id,
                     material: material.clone(),
                     light,
+                    spot,
                     generation: active.generation,
                 },
                 Mesh3d(mesh.clone()),
@@ -398,6 +461,7 @@ fn animate_fireflies(
     fixed: Res<Time<Fixed>>,
     active: Res<ActiveRun<FireflyCatch>>,
     mut views: Query<(&FireflyView, &mut Transform)>,
+    mut spots: Query<(&FireflySpot, &mut Transform), Without<FireflyView>>,
     mut lights: Query<&mut PointLight>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
@@ -418,6 +482,22 @@ fn animate_fireflies(
         };
         let tick = game.tick as f32 + alpha;
         let fade_in = ((tick - firefly.born as f32) / 30.0).clamp(0.0, 1.0);
+
+        if let Ok((spot, mut spot_transform)) = spots.get_mut(view.spot) {
+            spot_transform.translation = pos + Vec3::Y * 0.03;
+            let (size, glow) = match firefly.status {
+                FireflyStatus::Flying { .. } if firefly.tired => {
+                    let pulse = (now * 8.0 + phase).sin() * 0.5 + 0.5;
+                    (1.3 + pulse * 0.6, SPOT_TIRED_GLOW * (0.6 + 0.4 * pulse))
+                }
+                FireflyStatus::Flying { .. } => (1.0, SPOT_GLOW),
+                _ => (0.0, 0.0),
+            };
+            spot_transform.scale = Vec3::new(size, 1.0, size) * base_scale * fade_in;
+            if let Some(mut material) = materials.get_mut(&spot.material) {
+                material.emissive = glow_color(firefly.kind) * glow;
+            }
+        }
 
         let (lift, scale, glow) = match firefly.status {
             FireflyStatus::Flying { .. } => {
@@ -484,6 +564,11 @@ fn set_glow(
 }
 
 const SWING_SECS: f32 = 0.25;
+const SPOT_GLOW: f32 = 1.2;
+const SPOT_TIRED_GLOW: f32 = 6.0;
+const REACH_IDLE: f32 = 0.5;
+const REACH_READY: f32 = 3.0;
+const REACH_SWINGING: f32 = 6.0;
 
 fn animate_players(
     time: Res<Time>,
@@ -491,6 +576,8 @@ fn animate_players(
     active: Res<ActiveRun<FireflyCatch>>,
     mut players: Query<(&PlayerView, &mut Transform)>,
     mut parts: Query<&mut Transform, Without<PlayerView>>,
+    reaches: Query<&NetReach>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let alpha = blend(&fixed);
     let now = time.elapsed_secs();
@@ -536,6 +623,28 @@ fn animate_players(
         }
         if let Ok(mut disc) = parts.get_mut(view.disc) {
             disc.translation = pos + Vec3::Y * 0.03;
+        }
+
+        // The reach ring follows the net and lights up when a swing would catch something.
+        let facing = world(player.facing);
+        if let Ok(mut ring) = parts.get_mut(view.reach) {
+            ring.translation = pos + facing * NET_REACH + Vec3::Y * 0.04;
+        }
+        let net = player.net_centre(player.facing);
+        let ready = game
+            .flying()
+            .any(|f| f.catchable() && net_reaches(net, f.body.pos));
+        let glow = if player.swing_ticks > 0 {
+            REACH_SWINGING
+        } else if ready && player.net_cooldown == 0 {
+            REACH_READY * (0.8 + 0.2 * (now * 12.0).sin())
+        } else {
+            REACH_IDLE
+        };
+        if let Ok(reach) = reaches.get(view.reach)
+            && let Some(mut material) = materials.get_mut(&reach.material)
+        {
+            material.emissive = seat_color(view.seat) * glow;
         }
     }
 }
@@ -714,24 +823,8 @@ fn banner_text(active: &ActiveRun<FireflyCatch>) -> (String, String) {
         return banner;
     }
     match game.phase {
-        Phase::Intro { t } => {
-            let left = INTRO_TICKS - t;
-            if left <= 60 {
-                (left.div_ceil(20).to_string(), String::new())
-            } else {
-                let rule = match game.format {
-                    Format::OneVsThree { solo } => {
-                        tr!("firefly-catch-goal-solo", player = seat_label(solo))
-                    }
-                    Format::TwoVsTwo { .. } => tr!("firefly-catch-goal-teams"),
-                    _ => tr!("firefly-catch-goal"),
-                };
-                (
-                    tr!("firefly-catch-title"),
-                    tr!("firefly-catch-controls", goal = rule),
-                )
-            }
-        }
+        // The shared countdown (crate::intro) is drawn over this.
+        Phase::Intro { .. } => (String::new(), String::new()),
         Phase::Playing { ticks_left } => {
             let secs = (ticks_left as u32).div_ceil(TICK_HZ);
             let title = if secs <= 5 {

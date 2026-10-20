@@ -12,6 +12,7 @@ use sim_core::{
 };
 
 use crate::flow::{AppState, MinigameLaunch, MinigameResult, Origin};
+use crate::intro::InstructionCard;
 
 /// How long a finished game stays on screen before A continues.
 const RESTART_DELAY_TICKS: u32 = 90;
@@ -204,6 +205,10 @@ impl<M: Minigame> Plugin for MinigamePlugin<M> {
         .add_systems(
             FixedUpdate,
             step_run::<M>.run_if(resource_exists::<ActiveRun<M>>),
+        )
+        .add_systems(
+            Update,
+            crate::intro::show_countdown::<M>.run_if(resource_exists::<ActiveRun<M>>),
         );
     }
 }
@@ -342,8 +347,13 @@ fn step_run<M: Minigame>(
     gamepads: Query<(Entity, &Gamepad)>,
     mut latch: ResMut<PressLatch>,
     mut next_state: ResMut<NextState<AppState>>,
+    card: Option<Res<InstructionCard>>,
 ) {
     let latched = std::mem::take(&mut latch.0);
+    // Nothing happens until everyone has read the instruction card.
+    if card.is_some() {
+        return;
+    }
 
     if let Some(outcome) = active.run.outcome() {
         active.previous = active.run.game.clone();

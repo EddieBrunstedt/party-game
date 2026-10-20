@@ -4,6 +4,7 @@ mod dev;
 mod firefly_catch;
 mod flow;
 mod i18n;
+mod intro;
 mod lantern_push;
 mod menus;
 mod minigames;
@@ -176,6 +177,7 @@ fn main() {
 
     app.add_plugins((
         runner::InputPlugin,
+        intro::IntroPlugin,
         minigames::MinigamesPlugin,
         board_view::BoardViewPlugin,
         menus::MenusPlugin,

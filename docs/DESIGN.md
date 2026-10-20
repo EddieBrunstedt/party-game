@@ -51,7 +51,7 @@ Items, shops, event spaces, bonus stars, last-5-turns events, **duels (1v1, need
 - **Inputs:** a stick plus 2–3 buttons, so every minigame plays on any controller.
 - **Vertical-slice minigames:**
   - **Lantern Push:** sumo knockoff on a shrinking platform. Proves physics, knockback and rollback. A dashes into rivals, B braces (heavy for a moment, so a dash bounces off). The platform shrinks from 8 s to 45 s; last player or team standing wins, and at the 75 s limit survivors share the win. In 1v3 the solo is bigger and heavier.
-  - **Firefly Catch:** chase fleeing fireflies. Proves spawning, simple AI-driven objects, particles and scoring. A swings a net, B dashes. A startled firefly sprints and hops over its chaser, which tires it; tired fireflies are slow and easy to net. Golden fireflies are worth 3; in 1v3 the solo's catches count triple.
+  - **Firefly Catch:** chase fleeing fireflies. Proves spawning, simple AI-driven objects, particles and scoring. A swings a net, B dashes. A startled firefly sprints and hops over its chaser, which tires it; tired fireflies are slow and easy to net. A ring on the ground in front of each player shows exactly where the net catches, and each firefly's ground spot pulses while it's tired. Golden fireflies are worth 3; in 1v3 the solo's catches count triple.
   - **Quick Draw:** press when the lantern lights. Proves reflex/timing games and is the first minigame used to build the pipeline.
 - **Free-play mode:** play any minigame directly from a menu. The same entry point is available from the CLI for development, with N bots.
 
@@ -60,6 +60,7 @@ Items, shops, event spaces, bonus stars, last-5-turns events, **duels (1v1, need
 - **One controller per player.** The game is designed for gamepads; keyboard input is for development only.
 - **Joining:** on the join screen, each controller that presses A takes the next seat and stays bound to it. Left/right picks a character (each character once), B leaves, X cycles the bots' difficulty, up/down sets the board length, and Start begins. Online, each machine joins its local controllers the same way.
 - **Screens:** title (board game / free play / quit) → join → board ↔ minigames → results → title. Free play goes join → minigame picker → minigame, and B after a result returns to the picker.
+- **Every minigame starts the same way** (`game/src/intro.rs`): an instruction card (title, format, goal, how to play, controls) that waits until every human has pressed A, then a 3-2-1 countdown of `sim_core::COUNTDOWN_TICKS` in which nobody can act. The simulation doesn't tick while the card is up. A minigame only supplies Fluent keys (`{id}-title`, `-goal`, `-how`, `-a`, and optionally `-b`, `-stick`, `-goal-teams`, `-goal-solo`); a test checks the required ones. "Play again" in free play skips the card. Online, readiness will travel as a board-protocol message.
 - **Bots** fill empty seats, set by the host, with 2–3 difficulty levels. A bot is a **virtual controller**: a pure function `bot_input(state, seat, difficulty) -> Input` whose output is sent exactly like a human's. The simulation never knows a seat is a bot.
 - **Controller disconnects** are local events and never break the network session. The setting "Pause when a controller disconnects" defaults to **Off**:
   - **Off:** that seat's input goes neutral and a "🎮✕ P2" badge appears.

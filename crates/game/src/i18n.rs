@@ -41,6 +41,11 @@ pub fn tr_args(key: &str, args: &[(&str, FluentValue)]) -> String {
         .into_owned()
 }
 
+/// Whether `key` is defined, for strings a screen shows only when they exist.
+pub fn has_key(key: &str) -> bool {
+    bundle().has_message(key)
+}
+
 /// Players' labels joined for a sentence: "P1 & P3".
 pub fn names(seats: impl Iterator<Item = sim_core::Seat>) -> String {
     seats

@@ -19,7 +19,8 @@ use sim_core::{
 
 /// The meadow is a rectangle centred on the origin with walls on all sides.
 pub const ARENA_HALF_EXTENTS: Vec2 = Vec2::new(8.0, 5.0);
-pub const INTRO_TICKS: u16 = 120;
+/// The opening countdown, the same in every minigame.
+pub const INTRO_TICKS: u16 = sim_core::COUNTDOWN_TICKS;
 pub const PLAY_TICKS: u16 = 45 * 60;
 
 pub const PLAYER_RADIUS: f32 = 0.45;
@@ -31,9 +32,13 @@ pub const BUMP_RESTITUTION: f32 = 0.6;
 pub const WALL_RESTITUTION: f32 = 0.3;
 
 /// The net sweeps a circle this far in front of the player's centre...
-pub const NET_REACH: f32 = 0.5;
-/// ...with this radius. A firefly whose own circle touches it is caught.
-pub const NET_RADIUS: f32 = 0.3;
+pub const NET_REACH: f32 = 0.7;
+/// ...with this radius. A firefly whose own circle touches it is caught. The far edge stays
+/// short of [`HOP_TRIGGER_DISTANCE`], even mid-dash, so only a tired firefly can be netted.
+pub const NET_RADIUS: f32 = 0.4;
+/// After A is pressed the net stays open this long, catching whatever it touches, so a swing
+/// a moment early still lands.
+pub const SWING_TICKS: u16 = 12;
 pub const NET_COOLDOWN_TICKS: u16 = 45;
 pub const DASH_SPEED: f32 = 11.0;
 /// A dash overrides steering for this long; drag and bumps still apply.
@@ -243,6 +248,8 @@ pub struct Player {
     pub net_cooldown: u16,
     /// Tick of the most recent swing, for the swing animation.
     pub last_swing: Option<u32>,
+    /// Ticks the net stays open (0 = not swinging); see [`SWING_TICKS`].
+    pub swing_ticks: u16,
     pub dash_cooldown: u16,
     /// Ticks of dash left; steering is ignored while this is non-zero.
     pub dash_ticks: u16,
@@ -259,6 +266,7 @@ impl Player {
             facing: (-start).normalize_or_zero(),
             net_cooldown: 0,
             last_swing: None,
+            swing_ticks: 0,
             dash_cooldown: 0,
             dash_ticks: 0,
             score: 0,
@@ -391,8 +399,7 @@ impl State {
             as u16;
     }
 
-    fn update_players(&mut self, inputs: &Inputs) -> [bool; MAX_PLAYERS] {
-        let mut swung = [false; MAX_PLAYERS];
+    fn update_players(&mut self, inputs: &Inputs) {
         for seat in self.setup.seats() {
             let player = &mut self.players[seat.index()];
             let stick = Vec2::from_stick(&inputs.current[seat.index()]);
@@ -400,12 +407,13 @@ impl State {
                 player.facing = stick.normalize_or_zero();
             }
             player.net_cooldown = player.net_cooldown.saturating_sub(1);
+            player.swing_ticks = player.swing_ticks.saturating_sub(1);
             player.dash_cooldown = player.dash_cooldown.saturating_sub(1);
 
             if inputs.just_pressed(seat, Button::A) && player.net_cooldown == 0 {
                 player.net_cooldown = NET_COOLDOWN_TICKS;
                 player.last_swing = Some(self.tick);
-                swung[seat.index()] = true;
+                player.swing_ticks = SWING_TICKS;
             }
             if inputs.just_pressed(seat, Button::B) && player.dash_cooldown == 0 {
                 player.dash_cooldown = DASH_COOLDOWN_TICKS;
@@ -434,12 +442,11 @@ impl State {
                 .body
                 .bounce_in_rect(ARENA_HALF_EXTENTS, WALL_RESTITUTION);
         }
-        swung
     }
 
-    /// Every flying firefly touched by a net this tick is caught. If two nets reach the same
-    /// firefly, the closer net wins (lower seat on an exact tie).
-    fn resolve_swings(&mut self, swung: [bool; MAX_PLAYERS]) {
+    /// Every flying firefly touched by an open net this tick is caught. If two nets reach the
+    /// same firefly, the closer net wins (lower seat on an exact tie).
+    fn resolve_swings(&mut self) {
         let tick = self.tick;
         for i in 0..self.fireflies.len() {
             let firefly = self.fireflies[i];
@@ -447,7 +454,11 @@ impl State {
                 continue;
             }
             let mut catcher: Option<(Seat, f32)> = None;
-            for seat in self.setup.seats().filter(|s| swung[s.index()]) {
+            for seat in self
+                .setup
+                .seats()
+                .filter(|s| self.players[s.index()].swing_ticks > 0)
+            {
                 let player = &self.players[seat.index()];
                 let net = player.net_centre(player.facing);
                 if !net_reaches(net, firefly.body.pos) {
@@ -684,8 +695,8 @@ impl Minigame for FireflyCatch {
                 };
             }
             Phase::Playing { ticks_left } => {
-                let swung = state.update_players(inputs);
-                state.resolve_swings(swung);
+                state.update_players(inputs);
+                state.resolve_swings();
                 state.update_fireflies();
                 state.update_spawning();
                 state.phase = if ticks_left <= 1 {
@@ -1027,7 +1038,9 @@ mod tests {
         let mut run = new_run(2, Format::FreeForAll);
         to_playing(&mut run);
         run.step(with(0, swing()));
-        run.step(NONE);
+        for _ in 0..SWING_TICKS {
+            run.step(NONE);
+        }
         let id = plant_in_net(&mut run, 0, FireflyKind::Normal);
         run.step(with(0, swing()));
         assert!(find(&run, id).unwrap().is_flying());
@@ -1037,6 +1050,33 @@ mod tests {
         let id = plant_in_net(&mut run, 0, FireflyKind::Normal);
         run.step(with(0, swing()));
         assert!(!find(&run, id).unwrap().is_flying());
+    }
+
+    #[test]
+    fn the_net_stays_open_for_a_moment() {
+        let mut run = new_run(2, Format::FreeForAll);
+        to_playing(&mut run);
+        run.step(with(0, swing()));
+        for _ in 0..SWING_TICKS / 2 {
+            run.step(NONE);
+        }
+        let late = plant_in_net(&mut run, 0, FireflyKind::Normal);
+        run.step(NONE);
+        assert!(!find(&run, late).unwrap().is_flying());
+        for _ in 0..SWING_TICKS {
+            run.step(NONE);
+        }
+        let too_late = plant_in_net(&mut run, 0, FireflyKind::Normal);
+        run.step(NONE);
+        assert!(find(&run, too_late).unwrap().is_flying());
+    }
+
+    /// The chase is the game: a rested firefly hops away before any net, even a dashing
+    /// player's, can touch it.
+    #[test]
+    fn nets_fall_short_of_the_hop_distance() {
+        let far_edge = NET_REACH + NET_RADIUS + FIREFLY_RADIUS;
+        assert!(far_edge + DASH_SPEED * physics::DT < HOP_TRIGGER_DISTANCE);
     }
 
     #[test]
@@ -1475,8 +1515,8 @@ mod tests {
             current[0] = FireflyCatch::bot_input(&state, Seat(0), difficulty);
             let inputs = Inputs { current, previous };
             previous = current;
-            let swung = state.update_players(&inputs);
-            state.resolve_swings(swung);
+            state.update_players(&inputs);
+            state.resolve_swings();
             if !state.fireflies[0].is_flying() {
                 return t;
             }

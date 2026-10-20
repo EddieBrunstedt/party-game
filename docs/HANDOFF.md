@@ -1,54 +1,30 @@
-# Handoff: overnight session 2026-10-20
+# Handoff: session 2026-10-20 (afternoon)
 
-Morning briefing for the developer. Updated at every checkpoint; if the session died, the
-"In progress" section says where.
+Briefing for the next session. The overnight session's notes are in git history (`git log -p docs/HANDOFF.md`).
 
-## Done tonight
+## Done this session
 
-- **Groundwork** (`0560d90`): team formats (`Format::team`, `Outcome::from_team_scores`), type-erased `MinigameEntry`/`DynRun`, `sim_core::physics`; `check_all` now covers every supported format.
-- **Lantern Push** (`7cf6f06`): sumo with dash and brace on a shrinking platform, bots, interpolated view, all formats.
-- **Board simulation** (`b118425`): `sim-board` with the Dusk Meadow board in RON, the §3.1 rules, board bots, the `minigame-registry` crate and `tools board`. Built by a subagent; I integrated and checked it.
-- **Firefly Catch** (sim `f16273a`, view `4b8ce94`): fleeing fireflies with stable ids, bevy_hanabi particles (git `77630ff`), all formats.
-- **Board view** (`23a72b5`, tests `88e4784`): playable on screen with humans and bots.
-- **Game flow** (`1fee32a`, fixes `d412cf1` and `72cf26a`): title → join (pads bind to seats, character pick) → board ↔ minigames → results; free-play picker; every UI string in Fluent; ADR 0007 on input.
-- **GitLab CI** (`.gitlab-ci.yml`, from `23a72b5`): tests and clippy in one job; pipelines green on main (checked with `glab`).
-- **Steam Deck preset** (`7a441ee`): F4 / Select toggles it; `--gpu-report` measures it. Every scene measures 0.46–0.54 ms GPU in the Deck preset (Quick Draw on Desktop, the busiest, is 1.20 ms), far under the ~2–3 ms budget. The scenes are still placeholders, so re-measure after the polish pass.
+- **Firefly Catch readability** (playtest 1: "couldn't catch a single one"): the net stays open for 0.2 s (`SWING_TICKS`) and is bigger, still short of the hop distance (tested). Each player has a ground ring showing exactly where the net catches; each firefly has a ground spot that pulses while it's tired.
+- **Shared minigame start** (playtest 2: rules "fly by in under a second"): `crates/game/src/intro.rs`. Every minigame opens with an instruction card that waits for every human's A (bots are ready at once; with no humans it starts after 3 s), then the same 3-2-1 countdown, `sim_core::COUNTDOWN_TICKS`, drawn from `Run::tick`. A minigame supplies only Fluent keys (`{id}-title`, `-goal`, `-how`, `-a`; optional `-b`, `-stick`, `-goal-teams`, `-goal-solo`), and a test checks the required ones. The developer says the ready screen "works great for now".
+- **Blender MCP** is set up and connected: the official Blender Lab server in `~/blender_mcp` (venv, no `uv`), add-on v1.0.3 installed in Blender 5.2.2, registered in Claude Code at local scope. See CLAUDE.md.
+- Evidence: workspace tests and clippy pass. Screenshots were checked for the card (1v3 with a human pressing A, 2v2 with bots only, Quick Draw card → countdown → play). A scripted board session went Title → Join → Board → 2 × (Minigame → Board) with no panics.
 
-## Decisions to review
+## State of the tree
 
-1. **Firefly Catch fireflies sprint, hop over you and tire** (a subagent added this; plain "slightly slower than the player" fireflies were caught in about 2 s). The 1v3 solo's catches count ×3.
-2. **No input crate** (ADR 0007, new): our own ~150-line mapper stays until rebinding is needed.
-3. **Lantern Push has a B "brace" button** (heavy for 0.75 s, dashes bounce off). Not in DESIGN.md's original pitch; easy to delete.
-4. **Board rules details** (ROADMAP.md, under Board simulation): passing the Star = stepping onto it; turn-order rolls never tie; 2v2 teams = blue vs red; 12 rounds by default (the join screen offers 6–20).
-5. **Placeholder characters** differ by their light source (tassel, firefly jar, candle, neon halo) until the Blender models exist.
-6. **1v3 balance in Lantern Push is physical** (the solo is bigger and heavier), tuned so the solo wins 34–56% against bots.
-7. **The Lantern Push platform is a smooth disc with a glowing edge**, not voxel tiles, so the ring-out line is exact; the tiles are decoration that crumbles away.
-8. **`clippy.toml` raises `too-many-arguments` to 10**, because Bevy systems take their data as parameters.
+All of the above is **uncommitted** (`git status`). Review and commit it first, unless the developer says otherwise.
 
-## Needs human playtest
+## Decisions
 
-- **A whole session:** `cargo run -p game` → Board game → join with pads (A), pick characters (left/right), Start. Check pacing, the stick-aimed fork choice, the camera, and the join flow with several pads. Also check that an unplugged and replugged pad comes back to its seat; this is untested.
-- **Lantern Push:** dash/brace feel, knockback strength, match length with 2 players.
-  `cargo run -p game -- --minigame lantern-push --humans 1` (also try `--format 1v3`, `--format 2v2`, `--players 2`).
-- **Firefly Catch:** whether sprint/hop/tire reads, net reach, cooldowns, ×3 solo.
-  `cargo run -p game -- --minigame firefly-catch --humans 1` (also `--format 1v3`, `--format 2v2`).
-- **Deck preset look:** press F4 in any scene: are "no MSAA, one shadow cascade" acceptable?
+- **Firefly Catch is on hold.** The developer finds it "not very fun" and may cut it. Don't tune or polish it until they decide. It stays in the board's pool for now.
+- The countdown is now 3 s in every minigame (it used to be 2 s or 4 s), and the card replaced each minigame's own intro text.
 
-## Blocked or skipped
+## Next
 
-- **Four lantern-folk characters:** skipped, needs Blender running with its MCP.
-- **Polish pass 1:** skipped, needs a human playtest.
+**Four lantern-folk characters** (ROADMAP.md, first unticked item), now unblocked by the Blender MCP. Then Polish pass 1, which leaves Firefly Catch out, and needs a human playtest.
 
-## Useful things learned tonight
+## Useful to know
 
-- When the dev machine's screen goes idle, windowed Bevy runs hang without presenting frames. `gamescope --backend headless -w 1280 -h 800 -W 1280 -H 800 -- ./target/debug/game ...` renders fine (now in CLAUDE.md).
-- `--press 3:Space` / `--press-every 1.5:Space` inject key presses, so a headless run can walk the menus and play turns. Screen changes are logged as `screen: A -> B`.
-- `--gpu-report` prints GPU frame time (avg/p95/max) and a per-pass breakdown at exit.
-
-## In progress when the session ended
-
-Nothing. Every in-scope roadmap item is ticked; the remaining unticked items (characters, polish pass 1) are the two skipped ones above. The next item for a session is **Four lantern-folk characters** (needs Blender), then **Polish pass 1**, then Milestone 2.
-
-Also worth a look:
-- 12 rounds took about 22 minutes with bots only; the 30–40 minute target may need 15 rounds (ROADMAP.md, Board view).
-- Board bots seed from `checksum(game)`, which hashes collection lengths as `usize`. That's fine on x86_64-only targets (ADR 0006) but would differ on 32-bit peers.
+- Scripted board session: `--press-every 1.5:Space --press 5:Enter`. Enter starts the game from the join screen; without it the run sits on Join.
+- `--humans 0` screenshot runs now spend about 3 s on the instruction card before the countdown, so shift `--screenshot-at` times.
+- `/tmp` has a per-user quota. The overnight scratchpad had grown to 13 GB of build output, and filling the quota breaks every shell command. Keep scratch builds small or delete them when done.
+- Still open from the overnight session: 12 rounds took about 22 minutes with bots, so the 30–40 minute target may need 15. Board bots hash `usize` lengths, which is fine on x86_64 but would desync with 32-bit peers.

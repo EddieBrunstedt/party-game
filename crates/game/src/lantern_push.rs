@@ -5,8 +5,8 @@ use std::f32::consts::TAU;
 
 use bevy::prelude::*;
 use minigame_lantern_push::{
-    DASH_COOLDOWN, FALL_TICKS, Fighter, INTRO_TICKS, LanternPush, MIN_RADIUS, Phase, START_RADIUS,
-    State, Status, platform_radius,
+    DASH_COOLDOWN, FALL_TICKS, Fighter, LanternPush, MIN_RADIUS, Phase, START_RADIUS, State,
+    Status, platform_radius,
 };
 use sim_core::physics::Vec2 as SimVec2;
 use sim_core::{Format, Seat, TICK_HZ};
@@ -750,24 +750,8 @@ fn banner_text(active: &ActiveRun<LanternPush>) -> (String, String) {
         return banner;
     }
     match game.phase {
-        Phase::Intro { t } => {
-            let left = INTRO_TICKS - t;
-            if left <= 90 {
-                (left.div_ceil(30).to_string(), String::new())
-            } else {
-                let goal = match game.format {
-                    Format::OneVsThree { solo } => {
-                        tr!("lantern-push-goal-solo", player = seat_label(solo))
-                    }
-                    Format::TwoVsTwo { .. } => tr!("lantern-push-goal-teams"),
-                    _ => tr!("lantern-push-goal"),
-                };
-                (
-                    tr!("lantern-push-title"),
-                    tr!("lantern-push-controls", goal = goal),
-                )
-            }
-        }
+        // The shared countdown (crate::intro) is drawn over this.
+        Phase::Intro { .. } => (String::new(), String::new()),
         Phase::Playing => {
             // Announce the latest knockout for a moment.
             let fallen = game

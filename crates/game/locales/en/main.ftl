@@ -52,6 +52,10 @@ winners = { $names } { $count ->
         [one] wins!
        *[other] win!
     }
+card-stick = Stick
+card-ready = READY
+card-press-a = Press A
+card-prompt = Press A when you're ready
 minigame-again = A: play again   B: choose another
 minigame-continue = Press A to continue
 place = { $place ->
@@ -74,7 +78,9 @@ minigame-firefly-catch = Firefly Catch
 
 ## Quick Draw
 quick-draw-title = QUICK DRAW
-quick-draw-rules = Press A the instant the lantern lights. First to { $points } wins!
+quick-draw-goal = First to 3 points wins!
+quick-draw-how = The lantern lights up after a random wait: press A the instant it does. Press too early and you sit the round out.
+quick-draw-a = draw
 quick-draw-wait = Wait for it...
 quick-draw-round = Round { $round }
 quick-draw-draw = DRAW!
@@ -86,7 +92,10 @@ quick-draw-too-slow = too slow
 
 ## Lantern Push
 lantern-push-title = LANTERN PUSH
-lantern-push-controls = A: shove   B: brace   { $goal }
+lantern-push-how = Shove rivals off the platform. It starts shrinking after a few seconds, so don't get caught near the edge.
+lantern-push-stick = move
+lantern-push-a = shove
+lantern-push-b = brace (heavy for a moment, shoves bounce off)
 lantern-push-goal = Last one standing wins!
 lantern-push-goal-teams = Knock the other team off!
 lantern-push-goal-solo = { $player } is big and heavy. Three against one!
@@ -100,7 +109,10 @@ lantern-push-is-out = OUT
 
 ## Firefly Catch
 firefly-catch-title = FIREFLY CATCH
-firefly-catch-controls = A: swing net   B: dash   { $goal }
+firefly-catch-how = Chase a firefly until it tires and its spot on the ground pulses, then swing when it's inside the ring in front of you. Rested fireflies hop out of reach.
+firefly-catch-stick = run
+firefly-catch-a = swing net
+firefly-catch-b = dash
 firefly-catch-goal = Most points wins! Golden fireflies are worth 3.
 firefly-catch-goal-teams = Team scores add up!
 firefly-catch-goal-solo = { $player }'s catches count triple!
