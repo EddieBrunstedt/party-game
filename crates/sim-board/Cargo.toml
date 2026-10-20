@@ -1,0 +1,10 @@
+[package]
+name = "sim-board"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+sim-core.workspace = true
+serde.workspace = true
+ron.workspace = true

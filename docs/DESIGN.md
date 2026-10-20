@@ -85,11 +85,12 @@ Items, shops, event spaces, bonus stars, last-5-turns events, **duels (1v1, need
 crates/
   sim-core/     # no Bevy. Math wrapper (libm), portable hasher, seeded RNG, Minigame trait, Run wrapper, input types
   sim-check/    # no Bevy. The automated quality bars: replay, ggrs sync test, bot runs
-  sim-board/    # (planned) no Bevy. Board graph (RON), turn state machine, rules, board bots
+  sim-board/    # no Bevy. Board graph (RON), turn state machine, rules, board bots, headless games
   minigames/*   # no Bevy. One crate per minigame: State: Clone + Hash, step(), bot_input()
+  registry/     # no Bevy. minigame-registry: the list of every minigame, looked up by id
   net/          # (planned) transport layer (UDP now, Steam later), ggrs driver, board-phase protocol
   game/         # Bevy 0.20: rendering, interpolation, UI, audio, input, menus
-  tools/        # headless CLI: `check` (all quality bars), `bots` (bot-only matches)
+  tools/        # headless CLI: `check` (all quality bars), `bots` (bot-only matches), `board` (bot-only board games)
 ```
 
 ### 4.2 Simulation outside Bevy ([ADR 0001](adr/0001-simulation-outside-bevy.md))

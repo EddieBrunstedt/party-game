@@ -33,8 +33,18 @@ A fun problem found at the playable stage gets fixed straight away; polish won't
   - spawning and despawning objects inside the simulation with stable IDs
   - GPU particles (`bevy_hanabi` from git main until its 0.20 release)
   - Done when: same bar as Lantern Push.
-- [ ] **Board simulation (`sim-board`).** Board graph in RON, turn state machine, the §3.1 ruleset, board bots, the minigame format chosen from space colours. A minigame registry lets the board pick and launch any minigame by format.
+- [x] **Board simulation (`sim-board`).** Board graph in RON, turn state machine, the §3.1 ruleset, board bots, the minigame format chosen from space colours. A minigame registry lets the board pick and launch any minigame by format.
   - Done when: `tools` can play a full bot-only board game headlessly, minigames included, end to end, deterministically from a seed.
+  - Evidence: `cargo run -p tools -- board --seed 1 --verbose` plays 12 rounds with Quick Draw and Lantern Push in FFA, 1v3 and 2v2; the same seed gives the same checksum, and different seeds differ. 25 `sim-board` tests, plus a `minigame-registry` integration test that plays full games with the real minigames.
+  - Built by a subagent in a worktree, then merged; ordered ahead of Firefly Catch's view because it didn't depend on it.
+  - API: `Game::new(board, rules, players, seed, &registry)`, `apply(seat, Intent) -> Result<Vec<Event>, Rejected>`, `apply_minigame_outcome`, `awaiting()`, `bot_intent`, `headless::play_bots`. Board file: `crates/sim-board/boards/meadow.ron` ("Dusk Meadow", 39 spaces, 2 forks, 5 star spots).
+  - Decision: turn-order rolls draw from numbers nobody has rolled yet, so there are no ties and no re-rolls.
+  - Decision: space ids equal their index in the RON file, so lookups are plain indexing. Inserting a space means renumbering.
+  - Decision: the whole `Board` lives in `Game` (floats hashed with `hash_f32`), so a save or reconnect snapshot is self-contained. The minigame pool is copied into the state as ids and formats.
+  - Decision: "passing" the Star means stepping onto it, including the final step. Buying costs no steps, and landing on it still pays its colour.
+  - Decision: in 2v2, the players on blue are team 0. In 1v3, the solo is whoever is on the minority colour. Fewer than 4 players is always FFA.
+  - Decision: 12 rounds by default (`Rules::rounds`). Needs human playtest: whether that lands in the 30–40 minute target.
+  - Decision: board bots seed their randomness from `checksum(game)` plus the seat. They head for the Star 35%/80%/100% of the time on Easy/Normal/Hard, and Easy declines an affordable star 10% of the time.
 - [ ] **Board view.** One small board scene (procedural/voxel), a camera that follows the active player, dice roll, path choice at forks, star purchase, coin popups.
   - Done when: a full game is playable on screen with 1 human + 3 bots.
 - [ ] **Game flow.** Title, then join screen ("press A to join", controller bound to seat, character pick), then board ↔ minigames, then results. UI strings move to Fluent keys here (all current UI text is hardcoded English). Choose the input crate (leafwing vs bevy_enhanced_input) here.
