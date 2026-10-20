@@ -1287,6 +1287,95 @@ fn update_hud(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sim_core::{Input, Inputs};
+
+    fn session() -> BoardSession {
+        let game = Game::new(
+            Board::meadow(),
+            Default::default(),
+            4,
+            1,
+            minigame_registry::ALL,
+        );
+        BoardSession::new(game)
+    }
+
+    /// Seat 0 goes from `previous` to `current` this frame.
+    fn inputs(previous: Input, current: Input) -> SeatInputs {
+        let mut all = Inputs::default();
+        all.previous[0] = previous;
+        all.current[0] = current;
+        SeatInputs(all)
+    }
+
+    fn press(button: Button) -> SeatInputs {
+        inputs(Input::default(), Input::default().with(button))
+    }
+
+    #[test]
+    fn a_rolls_the_die() {
+        let mut session = session();
+        let decision = Decision::Roll;
+        assert_eq!(
+            human_intent(&mut session, &press(Button::A), Seat(0), &decision),
+            Some(Intent::Roll)
+        );
+        let held = inputs(
+            Input::default().with(Button::A),
+            Input::default().with(Button::A),
+        );
+        assert_eq!(human_intent(&mut session, &held, Seat(0), &decision), None);
+    }
+
+    #[test]
+    fn a_buys_the_star_and_b_declines() {
+        let mut session = session();
+        let decision = Decision::BuyStar { price: 20 };
+        assert_eq!(
+            human_intent(&mut session, &press(Button::A), Seat(0), &decision),
+            Some(Intent::BuyStar(true))
+        );
+        assert_eq!(
+            human_intent(&mut session, &press(Button::B), Seat(0), &decision),
+            Some(Intent::BuyStar(false))
+        );
+    }
+
+    #[test]
+    fn the_stick_picks_the_path_it_points_along() {
+        let mut session = session();
+        let board = session.game.board().clone();
+        let here = space_pos(&board, session.game.player(Seat(0)).space);
+        let options = board.space(board.start()).next.clone();
+        // Any two spaces in clearly different directions will do as the fork's options.
+        let options = vec![options[0], SpaceId(board.spaces().len() as u16 - 1)];
+        let decision = Decision::ChoosePath {
+            options: options.clone(),
+        };
+        for (index, option) in options.iter().enumerate() {
+            let dir = (space_pos(&board, *option) - here).normalize();
+            let flick = Input {
+                stick_x: Input::quantize_axis(dir.x),
+                stick_y: Input::quantize_axis(-dir.z),
+                ..Input::default()
+            };
+            let intent = human_intent(
+                &mut session,
+                &inputs(Input::default(), flick),
+                Seat(0),
+                &decision,
+            );
+            assert_eq!(intent, None, "pointing alone doesn't commit");
+            assert_eq!(session.path_choice, index);
+            let intent = human_intent(
+                &mut session,
+                &inputs(flick, flick.with(Button::A)),
+                Seat(0),
+                &decision,
+            );
+            assert_eq!(intent, Some(Intent::ChoosePath(index as u8)));
+        }
+    }
 
     #[test]
     fn minigame_titles_read_nicely() {
