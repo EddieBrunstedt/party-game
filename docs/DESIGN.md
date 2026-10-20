@@ -83,12 +83,13 @@ Items, shops, event spaces, bonus stars, last-5-turns events, **duels (1v1, need
 
 ```
 crates/
-  sim-core/     # no Bevy. Math wrapper (libm), portable hasher, seeded RNG, Minigame trait, input types
-  sim-board/    # no Bevy. Board graph (RON), turn state machine, rules, board bots
+  sim-core/     # no Bevy. Math wrapper (libm), portable hasher, seeded RNG, Minigame trait, Run wrapper, input types
+  sim-check/    # no Bevy. The automated quality bars: replay, ggrs sync test, bot runs
+  sim-board/    # (planned) no Bevy. Board graph (RON), turn state machine, rules, board bots
   minigames/*   # no Bevy. One crate per minigame: State: Clone + Hash, step(), bot_input()
-  net/          # transport layer (UDP now, Steam later), ggrs driver, board-phase protocol
+  net/          # (planned) transport layer (UDP now, Steam later), ggrs driver, board-phase protocol
   game/         # Bevy 0.20: rendering, interpolation, UI, audio, input, menus
-  tools/        # headless runners, determinism checker, free-play CLI
+  tools/        # headless CLI: `check` (all quality bars), `bots` (bot-only matches)
 ```
 
 ### 4.2 Simulation outside Bevy ([ADR 0001](adr/0001-simulation-outside-bevy.md))
@@ -97,13 +98,18 @@ All game logic is plain Rust in the `sim-*` and `minigames/*` crates. Bevy only 
 
 ```rust
 pub trait Minigame {
-    type State: Clone + Hash;
-    fn new(seed: u64, players: &PlayerSetup, format: Format) -> Self::State;
-    fn step(state: &mut Self::State, inputs: &[Input; 4]);   // fixed 60 Hz
+    type State: Clone + Hash + Send + Sync;
+    const ID: &'static str;
+    const SUPPORTED_FORMATS: &'static [FormatKind];
+    const MAX_TICKS: u32;                                    // headless runs fail past this
+    fn new(seed: u64, players: PlayerSetup, format: Format) -> Self::State;
+    fn step(state: &mut Self::State, inputs: &Inputs);      // fixed 60 Hz
     fn outcome(state: &Self::State) -> Option<Outcome>;
     fn bot_input(state: &Self::State, seat: Seat, difficulty: Difficulty) -> Input;
 }
 ```
+
+`Inputs` carries this tick's and last tick's input per seat, so "just pressed" is part of the simulation. A minigame never runs on its own: `Run<M>` wraps its state with what every minigame shares (input edges, pause-as-input, controller-loss halting), and `Run<M>` is the unit that rollback snapshots and checksums.
 
 Determinism rules for simulation code:
 - no `HashMap` iteration
@@ -169,7 +175,7 @@ A minigame is **done** when it passes all three:
 2. **Headless bot run:** 4 bots finish the game with no panics.
 3. **Manual feel check:** the developer plays it.
 
-(1) and (2) run in CI on GitLab.
+(1) and (2) are one call, `sim_check::check_all::<M>(seeds)`. Every minigame crate runs it as a unit test, and `cargo run -p tools -- check <minigame>` runs it from the CLI. They will also run in CI on GitLab.
 
 ## 6. Milestones
 

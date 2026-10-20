@@ -1,0 +1,9 @@
+[package]
+name = "sim-core"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+libm.workspace = true
+serde.workspace = true

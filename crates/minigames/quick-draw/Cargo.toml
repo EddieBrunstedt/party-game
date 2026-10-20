@@ -1,0 +1,11 @@
+[package]
+name = "minigame-quick-draw"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+sim-core.workspace = true
+
+[dev-dependencies]
+sim-check.workspace = true

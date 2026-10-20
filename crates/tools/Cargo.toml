@@ -1,0 +1,11 @@
+[package]
+name = "tools"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+sim-core.workspace = true
+sim-check.workspace = true
+minigame-quick-draw.workspace = true
+clap.workspace = true
