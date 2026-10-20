@@ -674,7 +674,8 @@ fn spawn_trees(
             0.0,
             min.z - 6.0 + noise(k, 1, 41) * (max.z - min.z + 12.0),
         );
-        if distance_to_paths(board, p) < 1.8 {
+        // Keep well clear of the path: the camera looks over pawns from the +z side.
+        if distance_to_paths(board, p) < 3.2 {
             continue;
         }
         let size = 0.7 + noise(k, 1, 42) * 0.7;

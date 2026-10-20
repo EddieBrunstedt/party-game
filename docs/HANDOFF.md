@@ -12,7 +12,7 @@ Morning briefing for the developer. Updated at every checkpoint; if the session 
 - **Board view** (`23a72b5`, tests `88e4784`): playable on screen with humans and bots.
 - **Game flow** (`1fee32a`, fixes `d412cf1` and `72cf26a`): title → join (pads bind to seats, character pick) → board ↔ minigames → results; free-play picker; every UI string in Fluent; ADR 0007 on input.
 - **GitLab CI** (`.gitlab-ci.yml`, from `23a72b5`): tests and clippy in one job; pipelines green on main (checked with `glab`).
-- **Steam Deck preset** (`7a441ee`): F4 / Select toggles it; `--gpu-report` measures it. Numbers are in its roadmap entry.
+- **Steam Deck preset** (`7a441ee`): F4 / Select toggles it; `--gpu-report` measures it. Every scene measures 0.46–0.54 ms GPU in the Deck preset (Quick Draw on Desktop, the busiest, is 1.20 ms), far under the ~2–3 ms budget. The scenes are still placeholders, so re-measure after the polish pass.
 
 ## Decisions to review
 
@@ -47,4 +47,8 @@ Morning briefing for the developer. Updated at every checkpoint; if the session 
 
 ## In progress when the session ended
 
-- Measuring the Deck preset's GPU time in every scene, then ticking Board view, Game flow and the Steam Deck preset.
+Nothing. Every in-scope roadmap item is ticked; the remaining unticked items (characters, polish pass 1) are the two skipped ones above. The next item for a session is **Four lantern-folk characters** (needs Blender), then **Polish pass 1**, then Milestone 2.
+
+Also worth a look:
+- 12 rounds took about 22 minutes with bots only; the 30–40 minute target may need 15 rounds (ROADMAP.md, Board view).
+- Board bots seed from `checksum(game)`, which hashes collection lengths as `usize`. That's fine on x86_64-only targets (ADR 0006) but would differ on 32-bit peers.
