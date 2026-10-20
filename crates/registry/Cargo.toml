@@ -1,0 +1,12 @@
+[package]
+name = "minigame-registry"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+sim-core.workspace = true
+minigame-quick-draw.workspace = true
+
+[dev-dependencies]
+sim-board.workspace = true

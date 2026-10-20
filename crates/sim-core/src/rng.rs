@@ -1,5 +1,7 @@
+use serde::{Deserialize, Serialize};
+
 /// PCG32 (XSH RR). Lives inside simulation state so rollback restores it along with everything else.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Rng {
     state: u64,
 }

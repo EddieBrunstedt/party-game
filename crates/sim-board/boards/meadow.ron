@@ -1,0 +1,61 @@
+// Dusk Meadow: the first, small board.
+//
+// A counter-clockwise loop around a 16 x 12 field (spaces 0-27), with two forks that rejoin it:
+// - at 3, a long scenic detour bowing out past the bottom-right corner (28-33, back at 7);
+// - at 16, a short, mostly red shortcut straight down the middle (34-38, back at 2).
+//
+// Positions are floor coordinates in world units; the view places a space at (x, 0, y).
+// Ids must equal the space's position in the list. `next` lists where you may step from a
+// space; more than one entry is a fork and the player chooses.
+(
+    name: "Dusk Meadow",
+    start: 0,
+    star_spots: [10, 18, 23, 30, 36],
+    spaces: [
+        // Bottom edge, heading right.
+        (id: 0, x: -4.0, y: -6.0, kind: Blue, next: [1]),
+        (id: 1, x: -2.0, y: -6.0, kind: Blue, next: [2]),
+        (id: 2, x: 0.0, y: -6.0, kind: Blue, next: [3]),
+        (id: 3, x: 2.0, y: -6.0, kind: Blue, next: [4, 28]),
+        (id: 4, x: 4.0, y: -6.0, kind: Blue, next: [5]),
+        (id: 5, x: 6.0, y: -6.0, kind: Red, next: [6]),
+        (id: 6, x: 8.0, y: -6.0, kind: Blue, next: [7]),
+        // Right edge, heading up.
+        (id: 7, x: 8.0, y: -4.0, kind: Blue, next: [8]),
+        (id: 8, x: 8.0, y: -2.0, kind: Blue, next: [9]),
+        (id: 9, x: 8.0, y: 0.0, kind: Red, next: [10]),
+        (id: 10, x: 8.0, y: 2.0, kind: Blue, next: [11]),
+        (id: 11, x: 8.0, y: 4.0, kind: Blue, next: [12]),
+        (id: 12, x: 8.0, y: 6.0, kind: Blue, next: [13]),
+        // Top edge, heading left.
+        (id: 13, x: 6.0, y: 6.0, kind: Red, next: [14]),
+        (id: 14, x: 4.0, y: 6.0, kind: Blue, next: [15]),
+        (id: 15, x: 2.0, y: 6.0, kind: Blue, next: [16]),
+        (id: 16, x: 0.0, y: 6.0, kind: Blue, next: [17, 34]),
+        (id: 17, x: -2.0, y: 6.0, kind: Blue, next: [18]),
+        (id: 18, x: -4.0, y: 6.0, kind: Blue, next: [19]),
+        (id: 19, x: -6.0, y: 6.0, kind: Red, next: [20]),
+        (id: 20, x: -8.0, y: 6.0, kind: Blue, next: [21]),
+        // Left edge, heading down.
+        (id: 21, x: -8.0, y: 4.0, kind: Blue, next: [22]),
+        (id: 22, x: -8.0, y: 2.0, kind: Red, next: [23]),
+        (id: 23, x: -8.0, y: 0.0, kind: Blue, next: [24]),
+        (id: 24, x: -8.0, y: -2.0, kind: Blue, next: [25]),
+        (id: 25, x: -8.0, y: -4.0, kind: Red, next: [26]),
+        (id: 26, x: -8.0, y: -6.0, kind: Blue, next: [27]),
+        (id: 27, x: -6.0, y: -6.0, kind: Blue, next: [0]),
+        // Detour from 3 around the bottom-right corner, rejoining at 7.
+        (id: 28, x: 3.0, y: -8.0, kind: Blue, next: [29]),
+        (id: 29, x: 5.0, y: -9.0, kind: Blue, next: [30]),
+        (id: 30, x: 7.0, y: -9.5, kind: Blue, next: [31]),
+        (id: 31, x: 9.0, y: -9.0, kind: Red, next: [32]),
+        (id: 32, x: 10.5, y: -7.5, kind: Blue, next: [33]),
+        (id: 33, x: 10.0, y: -5.5, kind: Blue, next: [7]),
+        // Shortcut from 16 down the middle, rejoining at 2.
+        (id: 34, x: 0.0, y: 4.0, kind: Blue, next: [35]),
+        (id: 35, x: 0.0, y: 2.0, kind: Red, next: [36]),
+        (id: 36, x: 0.0, y: 0.0, kind: Blue, next: [37]),
+        (id: 37, x: 0.0, y: -2.0, kind: Red, next: [38]),
+        (id: 38, x: 0.0, y: -4.0, kind: Red, next: [2]),
+    ],
+)
