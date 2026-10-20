@@ -91,7 +91,8 @@ crates/
   sim-board/    # no Bevy. Board graph (RON), turn state machine, rules, board bots, headless games
   minigames/*   # no Bevy. One crate per minigame: State: Clone + Hash, step(), bot_input()
   registry/     # no Bevy. minigame-registry: the list of every minigame, looked up by id
-  net/          # (planned) transport layer (UDP now, Steam later), ggrs driver, board-phase protocol
+  net/          # no Bevy. Transport (UDP, in-memory, fault injection), Endpoint (handshake, reliable
+                #   channel, ggrs socket); later the ggrs driver and board-phase protocol
   game/         # Bevy 0.20: rendering, interpolation, UI, audio, input, menus.
                 #   flow.rs (screen states), runner.rs (input + minigame driver), board_view.rs,
                 #   menus.rs, intro.rs (instruction card), one view module per minigame,
@@ -140,6 +141,7 @@ Determinism rules for simulation code:
 
 - **Friends only**, by invite or code. No public matchmaking.
 - **Our own transport layer.** Plain UDP comes first: localhost for development, and direct IP over Tailscale or ZeroTier for playing with friends before Steam. A Steam backend (lobbies and invites, SteamNetworkingMessages via a small ggrs `NonBlockingSocket` adapter) slots in behind the same layer if the game ships on Steam.
+- **Endpoints** (`net`): each machine has one `Endpoint` over one transport and port. It handshakes (protocol and game version must match exactly, or the peer is refused with the reason), carries reliable ordered messages for the board phase (our own fragment, ack and resend layer), and hands `ggrs` a socket for minigames. Minigames need a full mesh (every machine reaches every other); the board phase only needs everyone to reach the host.
 - **Network disconnects:**
   - **Board phase:** pause with "Waiting for P3…". On reconnect, the host sends a full state snapshot. After ~2 minutes, the host gets options: *keep waiting*, *end and save*, or, as a last resort chosen by the host, *bot takes over*.
   - **Minigame:** the minigame stops and **restarts from the beginning with the same seed** once the player is back.
@@ -172,6 +174,7 @@ Determinism rules for simulation code:
 |---|---|---|
 | Engine | bevy 0.20 | Start on the latest ([ADR 0005](adr/0005-bevy-0-20.md)) |
 | Rollback | ggrs 0.13 | Core only, no `bevy_ggrs` |
+| Wire format | bincode 1.3 | Same as ggrs; decoded with a size limit |
 | Particles | bevy_hanabi | Use git main until the 0.20 release |
 | Blender components | bevy_skein | Use git main until the 0.20 release. **Not** the crates.io `skein` crate, which is an unrelated hash crate |
 | Input | none for now: our own small mapper | [ADR 0007](adr/0007-input-mapping.md); revisit (bevy_enhanced_input first) when rebinding arrives |

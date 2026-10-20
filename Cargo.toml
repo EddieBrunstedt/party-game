@@ -6,6 +6,7 @@ members = [
     "crates/sim-board",
     "crates/minigames/*",
     "crates/registry",
+    "crates/net",
     "crates/game",
     "crates/tools",
 ]
@@ -20,6 +21,7 @@ sim-core = { path = "crates/sim-core" }
 sim-check = { path = "crates/sim-check" }
 sim-board = { path = "crates/sim-board" }
 minigame-registry = { path = "crates/registry" }
+net = { path = "crates/net" }
 minigame-quick-draw = { path = "crates/minigames/quick-draw" }
 minigame-lantern-push = { path = "crates/minigames/lantern-push" }
 minigame-firefly-catch = { path = "crates/minigames/firefly-catch" }
@@ -32,6 +34,7 @@ bevy_kira_audio = { version = "0.27", default-features = false, features = ["wav
 kira = { version = "0.12", default-features = false }
 ggrs = { version = "0.13", features = ["sync-send"] }
 libm = "0.2"
+bincode = "1.3"
 serde = { version = "1", features = ["derive"] }
 ron = "0.12"
 clap = { version = "4", features = ["derive"] }

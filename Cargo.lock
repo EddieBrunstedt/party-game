@@ -4111,6 +4111,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "net"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "ggrs",
+ "serde",
+ "sim-core",
+]
+
+[[package]]
 name = "nix"
 version = "0.31.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
