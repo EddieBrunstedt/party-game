@@ -10,6 +10,7 @@ mod minigames;
 mod palette;
 mod particles;
 mod perf;
+mod quality;
 mod quick_draw;
 mod runner;
 mod scenery;
@@ -68,6 +69,12 @@ struct Cli {
     /// Press a key every SECS seconds, as SECS:KEY (repeatable).
     #[arg(long = "press-every", value_parser = dev::parse_key_press)]
     press_every: Vec<(f32, KeyCode)>,
+    /// Graphics preset; F4 (or Select on a pad) toggles it in-game.
+    #[arg(long, value_enum, default_value_t = quality::Quality::Desktop)]
+    quality: quality::Quality,
+    /// Print average and worst GPU frame time when the game exits.
+    #[arg(long)]
+    gpu_report: bool,
     /// Log every gamepad button press (diagnoses controller mappings).
     #[arg(long)]
     log_input: bool,
@@ -159,7 +166,13 @@ fn main() {
     .insert_resource(Time::<Fixed>::from_hz(TICK_HZ as f64))
     .insert_resource(Seats(seats))
     .init_resource::<characters::Roster>()
-    .add_plugins((perf::PerfOverlayPlugin, scenery::SceneryPlugin));
+    .add_plugins((
+        perf::PerfOverlayPlugin {
+            report: cli.gpu_report,
+        },
+        quality::QualityPlugin(cli.quality),
+        scenery::SceneryPlugin,
+    ));
 
     app.add_plugins((
         runner::InputPlugin,
