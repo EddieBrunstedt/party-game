@@ -11,4 +11,5 @@ sim-board.workspace = true
 minigame-registry.workspace = true
 minigame-quick-draw.workspace = true
 minigame-lantern-push.workspace = true
+minigame-firefly-catch.workspace = true
 clap.workspace = true

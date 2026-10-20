@@ -3781,6 +3781,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "minigame-firefly-catch"
+version = "0.1.0"
+dependencies = [
+ "sim-check",
+ "sim-core",
+]
+
+[[package]]
 name = "minigame-lantern-push"
 version = "0.1.0"
 dependencies = [
@@ -3800,6 +3808,7 @@ dependencies = [
 name = "minigame-registry"
 version = "0.1.0"
 dependencies = [
+ "minigame-firefly-catch",
  "minigame-lantern-push",
  "minigame-quick-draw",
  "sim-board",
@@ -5481,6 +5490,7 @@ name = "tools"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "minigame-firefly-catch",
  "minigame-lantern-push",
  "minigame-quick-draw",
  "minigame-registry",

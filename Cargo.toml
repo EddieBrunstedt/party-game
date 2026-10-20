@@ -22,6 +22,7 @@ sim-board = { path = "crates/sim-board" }
 minigame-registry = { path = "crates/registry" }
 minigame-quick-draw = { path = "crates/minigames/quick-draw" }
 minigame-lantern-push = { path = "crates/minigames/lantern-push" }
+minigame-firefly-catch = { path = "crates/minigames/firefly-catch" }
 bevy = "0.20"
 ggrs = { version = "0.13", features = ["sync-send"] }
 libm = "0.2"

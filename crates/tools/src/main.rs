@@ -2,6 +2,7 @@
 //! whole bot-only board games from the CLI.
 
 use clap::{Parser, Subcommand, ValueEnum};
+use minigame_firefly_catch::FireflyCatch;
 use minigame_lantern_push::LanternPush;
 use minigame_quick_draw::QuickDraw;
 use sim_board::{Board, Event, Game, Rules, Summary};
@@ -82,6 +83,7 @@ fn checker(id: &str) -> Option<fn(u64) -> Result<(), String>> {
     match id {
         QuickDraw::ID => Some(sim_check::check_all::<QuickDraw>),
         LanternPush::ID => Some(sim_check::check_all::<LanternPush>),
+        FireflyCatch::ID => Some(sim_check::check_all::<FireflyCatch>),
         _ => None,
     }
 }

@@ -1,6 +1,7 @@
 //! Every minigame in the game, so the board, the game and the tools can find and launch one by
 //! id or format without naming its type. A new minigame becomes playable by adding it to [`ALL`].
 
+use minigame_firefly_catch::FireflyCatch;
 use minigame_lantern_push::LanternPush;
 use minigame_quick_draw::QuickDraw;
 use sim_core::MinigameEntry;
@@ -8,6 +9,7 @@ use sim_core::MinigameEntry;
 pub const ALL: &[MinigameEntry] = &[
     MinigameEntry::of::<QuickDraw>(),
     MinigameEntry::of::<LanternPush>(),
+    MinigameEntry::of::<FireflyCatch>(),
 ];
 
 pub fn find(id: &str) -> Option<&'static MinigameEntry> {
