@@ -50,7 +50,7 @@ Items, shops, event spaces, bonus stars, last-5-turns events, **duels (1v1, need
 - **One shared screen, always.** There's no split-screen. Online players see the same framing as the couch.
 - **Inputs:** a stick plus 2–3 buttons, so every minigame plays on any controller.
 - **Vertical-slice minigames:**
-  - **Lantern Push:** sumo knockoff on a shrinking platform. Proves physics, knockback and rollback.
+  - **Lantern Push:** sumo knockoff on a shrinking platform. Proves physics, knockback and rollback. A dashes into rivals, B braces (heavy for a moment, so a dash bounces off). The platform shrinks from 8 s to 45 s; last player or team standing wins, and at the 75 s limit survivors share the win. In 1v3 the solo is bigger and heavier.
   - **Firefly Catch:** chase fleeing fireflies. Proves spawning, simple AI-driven objects, particles and scoring.
   - **Quick Draw:** press when the lantern lights. Proves reflex/timing games and is the first minigame used to build the pipeline.
 - **Free-play mode:** play any minigame directly from a menu. The same entry point is available from the CLI for development, with N bots.
@@ -126,7 +126,8 @@ Determinism rules for simulation code:
 | Minigame | Deterministic rollback over inputs only ([ADR 0002](adr/0002-rollback-with-ggrs-core.md)) | `ggrs` drives `Minigame::step`. Save = `clone`, load = restore, checksum = hash. 60 Hz, 2 frames input delay, max 8 frames of rollback. The host hands each minigame its seed, players and format. |
 
 - **Pause is an input.** All peers see it on the same frame, and the simulation stops advancing game time while paused.
-- **Physics:** custom and simple (circles, boxes, heightfields, gravity, knockback). A minigame that really needs rigid-body physics may use `avian` with `enhanced-determinism`, behind the same trait. See [ADR 0006](adr/0006-deterministic-floats-and-custom-physics.md).
+- **Physics:** custom and simple (circles, boxes, heightfields, gravity, knockback), in `sim_core::physics`: a `Vec2` floor plane (x right, y towards the camera; the renderer maps it to world `(x, 0, y)`), `Body` circles with velocities in units per second, and pairwise collisions resolved in index order.
+- **Teams:** `Format::team(seat)` gives each seat's side, and `Outcome::from_team_scores` ranks whole teams. `check_all` runs every format a minigame declares. A minigame that really needs rigid-body physics may use `avian` with `enhanced-determinism`, behind the same trait. See [ADR 0006](adr/0006-deterministic-floats-and-custom-physics.md).
 
 ### 4.4 Online ([ADR 0004](adr/0004-transport-layer.md))
 
@@ -142,7 +143,8 @@ Determinism rules for simulation code:
 
 - HDR camera, `Bloom`, TonyMcMapface or AgX tonemapping, emissive materials, volumetric fog, SSAO on desktop presets, and `bevy_hanabi` GPU particles.
 - **Board camera:** follows the active player. **Minigame cameras:** a single arena view.
-- Rendering interpolates between simulation ticks.
+- Rendering interpolates between simulation ticks: the runner keeps the state from one tick back, and views blend by `Time<Fixed>::overstep_fraction()`.
+- Shared placeholder pieces (night camera, lantern folk, fireflies, paper lanterns) live in `game/src/scenery.rs`.
 
 ### 4.6 Content pipeline
 

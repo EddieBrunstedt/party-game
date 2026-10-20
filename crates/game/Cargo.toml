@@ -7,6 +7,7 @@ publish.workspace = true
 [dependencies]
 sim-core.workspace = true
 minigame-quick-draw.workspace = true
+minigame-lantern-push.workspace = true
 bevy.workspace = true
 clap.workspace = true
 

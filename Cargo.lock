@@ -2876,6 +2876,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "clap",
+ "minigame-lantern-push",
  "minigame-quick-draw",
  "sim-core",
 ]
@@ -3777,6 +3778,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "minigame-lantern-push"
+version = "0.1.0"
+dependencies = [
+ "sim-check",
+ "sim-core",
 ]
 
 [[package]]
@@ -5453,6 +5462,7 @@ name = "tools"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "minigame-lantern-push",
  "minigame-quick-draw",
  "sim-check",
  "sim-core",

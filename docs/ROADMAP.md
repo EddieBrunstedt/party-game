@@ -16,10 +16,19 @@ A fun problem found at the playable stage gets fixed straight away; polish won't
 - [x] **Playtest Quick Draw (human).** Played with a PS5 controller: "felt good", no changes needed at the playable level.
   - Polish is deferred to the polish pass.
   - Note: a "connected" gamepad that sends no button presses is usually a flaky cable. `--log-input` and the kernel log (`journalctl -k`, look for error -71) will show it.
-- [ ] **Lantern Push** (to playable). Sumo knockoff on a shrinking platform. Introduces:
+- [x] **Lantern Push** (to playable). Sumo knockoff on a shrinking platform. Introduces:
   - custom deterministic physics in `sim-core` (circles, knockback, ring-out) with `f32` + `math` wrappers + `hash_f32`
   - render interpolation between ticks in `game`
   - Done when: `check_all` passes, bots at all difficulties produce close matches, and screenshots show a readable arena.
+  - Rules: A dashes (knockback + stun on whoever it hits), B braces (×4 mass for up to 0.75 s; a dash into a brace rebounds and stuns the attacker). The platform holds at radius 7 for 8 s, then shrinks to 2.2 by 45 s; 75 s time limit, survivors share the win. Supports FFA, 1v3, 2v2 and duel.
+  - Evidence: `check_all` (6 seeds in the unit test, 32 via `tools check`), 12 rule tests. 100 bot runs per difficulty at 4 players: avg 42–46 s, wins spread 21–33 per seat. Over 200 seeds: 1v3 solo wins 42% (Easy), 56% (Normal), 34% (Hard); 2v2 is even; one Hard bot beats three Easy bots 57% of the time.
+  - Decision: physics is `sim_core::physics` (`Vec2`, `Body`, `collide`, `collide_all`, `steer`, `bounce_in_rect`), velocities in units/second with a fixed `DT`, because every later minigame needs the same circles. Pairs are resolved in index order, so the result depends only on the slice.
+  - Decision: the platform is a disc scaled to the exact simulated radius, with a glowing edge ring, because readability beats voxel purity: decorative voxel tiles crumble off only once fully outside it.
+  - Decision: the 1v3 solo is bigger and heavier (radius 0.58, mass 1.35) instead of scoring differently, because in sumo the handicap has to be physical. Tuned with bots; first values (1.6 mass) made the solo win 75%.
+  - Decision: `check_all` now runs every supported format (1v3 and 2v2 at 4 players, duel at 2), and `sim-core` gained `Format::team` and `Outcome::from_team_scores`.
+  - Interpolation: `ActiveRun` keeps `previous` (the state one tick back), and views blend by `Time<Fixed>::overstep_fraction()`.
+  - Surprise: the first knockback values ended games in ~7 s (one hit from the middle was a ring-out), and the next set timed out most games. Bots also need their "won't dash off the edge" check to account for a dash stopping on contact, or they stall on a small platform.
+  - Needs human playtest: dash/brace feel, knockback strength, whether the 8 s before shrinking and ~40 s matches drag with 2 players (2-player games mostly end when the platform is nearly minimum size). `cargo run -p game -- --minigame lantern-push --players 4 --humans 1` (add `--format 1v3` or `--format 2v2`).
 - [ ] **Firefly Catch** (to playable). Chase fleeing fireflies. Introduces:
   - spawning and despawning objects inside the simulation with stable IDs
   - GPU particles (`bevy_hanabi` from git main until its 0.20 release)

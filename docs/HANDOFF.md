@@ -5,15 +5,19 @@ Morning briefing for the developer. Updated at every checkpoint; if the session 
 
 ## Done tonight
 
-_(nothing yet)_
+- **Groundwork** (`0560d90`): team formats (`Format::team`, `Outcome::from_team_scores`), type-erased `MinigameEntry`/`DynRun` for the registry, `sim_core::physics`; `check_all` now covers every supported format.
+- **Lantern Push** (see the commit after `0560d90`): sumo with dash and brace on a shrinking platform, bots, interpolated view, all formats.
 
 ## Decisions to review
 
-_(none yet)_
+1. **Lantern Push has a B "brace" button** (heavy for 0.75 s, dashes bounce off it). It isn't in DESIGN.md's one-line pitch; it adds a counter to dash spam. Easy to delete if it muddies the game.
+2. **1v3 balance in Lantern Push is physical** (the solo is bigger and heavier), tuned so the solo wins 34–56% against bots.
+3. **The Lantern Push platform is a smooth disc with a glowing edge**, not voxel tiles, so the ring-out line is exact; the tiles are decoration that crumbles away.
 
 ## Needs human playtest
 
-_(none yet)_
+- **Lantern Push:** dash/brace feel, knockback strength, match length with 2 players.
+  `cargo run -p game -- --minigame lantern-push --players 4 --humans 1` (also try `--format 1v3`, `--format 2v2`, `--players 2`).
 
 ## Blocked or skipped
 
@@ -22,5 +26,5 @@ _(none yet)_
 
 ## In progress when the session ended
 
-- Shared groundwork for the session: team formats in `sim-core`, format coverage in `check_all`,
-  deterministic 2D physics module. Then **Lantern Push**.
+- **Firefly Catch:** simulation being built by a subagent in a worktree; view (with `bevy_hanabi`, git rev `77630ff`, verified working on Bevy 0.20) next.
+- **sim-board:** being built by a subagent in a worktree in parallel.

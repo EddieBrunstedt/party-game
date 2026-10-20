@@ -1,16 +1,19 @@
 mod dev;
+mod lantern_push;
 mod palette;
 mod perf;
 mod quick_draw;
 mod runner;
+mod scenery;
 
 use std::path::PathBuf;
 
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
 use clap::{Parser, ValueEnum};
+use minigame_lantern_push::LanternPush;
 use minigame_quick_draw::QuickDraw;
-use sim_core::{Difficulty, Format, PlayerSetup, RunConfig, TICK_HZ};
+use sim_core::{Difficulty, Format, PlayerSetup, RunConfig, Seat, TICK_HZ};
 
 use runner::{Controller, MinigamePlugin, RunSetup, Seats};
 
@@ -31,6 +34,9 @@ struct Cli {
     humans: usize,
     #[arg(long, value_enum, default_value_t = BotLevel::Normal)]
     bots: BotLevel,
+    /// Team layout. In 1v3, P1 is the solo; in 2v2, P1 and P3 play P2 and P4.
+    #[arg(long, value_enum, default_value_t = FormatArg::Ffa)]
+    format: FormatArg,
     #[arg(long)]
     seed: Option<u64>,
     /// Halt the minigame while any controller is unplugged (default: that seat just goes idle).
@@ -49,6 +55,33 @@ struct Cli {
 #[derive(Clone, Copy, ValueEnum)]
 enum MinigameId {
     QuickDraw,
+    LanternPush,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum FormatArg {
+    Ffa,
+    #[value(name = "1v3")]
+    OneVsThree,
+    #[value(name = "2v2")]
+    TwoVsTwo,
+    Duel,
+}
+
+impl FormatArg {
+    fn format(self) -> Format {
+        match self {
+            FormatArg::Ffa => Format::FreeForAll,
+            FormatArg::OneVsThree => Format::OneVsThree { solo: Seat(0) },
+            FormatArg::TwoVsTwo => Format::TwoVsTwo {
+                team_of: [0, 1, 0, 1],
+            },
+            FormatArg::Duel => Format::Duel {
+                a: Seat(0),
+                b: Seat(1),
+            },
+        }
+    }
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -93,7 +126,7 @@ fn main() {
     let setup = RunSetup {
         seed,
         players: PlayerSetup::first(players),
-        format: Format::FreeForAll,
+        format: cli.format.format(),
         config: RunConfig {
             pause_on_controller_lost: cli.pause_on_controller_lost,
         },
@@ -110,13 +143,19 @@ fn main() {
     }))
     .insert_resource(Time::<Fixed>::from_hz(TICK_HZ as f64))
     .insert_resource(Seats(seats))
-    .add_plugins(perf::PerfOverlayPlugin);
+    .add_plugins((perf::PerfOverlayPlugin, scenery::SceneryPlugin));
 
     match cli.minigame {
         MinigameId::QuickDraw => {
             app.add_plugins((
                 MinigamePlugin::<QuickDraw>::new(setup),
                 quick_draw::QuickDrawViewPlugin,
+            ));
+        }
+        MinigameId::LanternPush => {
+            app.add_plugins((
+                MinigamePlugin::<LanternPush>::new(setup),
+                lantern_push::LanternPushViewPlugin,
             ));
         }
     }

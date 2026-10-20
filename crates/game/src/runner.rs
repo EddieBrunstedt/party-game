@@ -44,6 +44,9 @@ pub struct RunSetup {
 #[derive(Resource)]
 pub struct ActiveRun<M: Minigame> {
     pub run: Run<M>,
+    /// The game state one tick before `run.game`. Views blend between the two by
+    /// [`Time<Fixed>::overstep_fraction`] so motion is smooth at any frame rate.
+    pub previous: M::State,
     setup: RunSetup,
     /// Bumped on every restart so views can reset their presentation state.
     pub generation: u32,
@@ -52,8 +55,10 @@ pub struct ActiveRun<M: Minigame> {
 
 impl<M: Minigame> ActiveRun<M> {
     fn new(setup: RunSetup) -> Self {
+        let run = Run::<M>::new(setup.seed, setup.players, setup.format, setup.config);
         Self {
-            run: Run::new(setup.seed, setup.players, setup.format, setup.config),
+            previous: run.game.clone(),
+            run,
             setup,
             generation: 0,
             finished_ticks: 0,
@@ -227,6 +232,7 @@ fn step_run<M: Minigame>(
     let latched = std::mem::take(&mut latch.0);
 
     if active.run.outcome().is_some() {
+        active.previous = active.run.game.clone();
         active.finished_ticks += 1;
         let human_pressed_a = Seat::ALL.into_iter().any(|seat| {
             !seats.is_bot(seat)
@@ -247,5 +253,6 @@ fn step_run<M: Minigame>(
             human_input(keyboard, pads.get(gamepad).copied(), &keys, latched[i])
         }
     });
+    active.previous = active.run.game.clone();
     active.run.step(inputs);
 }

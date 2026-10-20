@@ -11,6 +11,7 @@ publish = false
 sim-core = { path = "crates/sim-core" }
 sim-check = { path = "crates/sim-check" }
 minigame-quick-draw = { path = "crates/minigames/quick-draw" }
+minigame-lantern-push = { path = "crates/minigames/lantern-push" }
 bevy = "0.20"
 ggrs = { version = "0.13", features = ["sync-send"] }
 libm = "0.2"

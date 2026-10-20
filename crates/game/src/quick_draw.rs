@@ -2,15 +2,16 @@
 
 use std::f32::consts::PI;
 
-use bevy::camera::Hdr;
-use bevy::core_pipeline::tonemapping::Tonemapping;
-use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use minigame_quick_draw::{POINTS_TO_WIN, Phase, QuickDraw, Reaction, State};
 use sim_core::{Seat, TICK_HZ};
 
 use crate::palette::{LANTERN_WARM, MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
 use crate::runner::{ActiveRun, Seats};
+use crate::scenery::{
+    emissive_material, night_camera, noise, spawn_fireflies, spawn_lantern_folk,
+    spawn_paper_lantern,
+};
 
 pub struct QuickDrawViewPlugin;
 
@@ -28,7 +29,6 @@ impl Plugin for QuickDrawViewPlugin {
                 (
                     animate_lantern,
                     animate_characters,
-                    animate_fireflies,
                     (fit_camera, shake_camera).chain(),
                     update_hud,
                 ),
@@ -66,43 +66,10 @@ struct Character {
 }
 
 #[derive(Component)]
-struct Marker {
-    base_y: f32,
-}
-
-#[derive(Component)]
-struct Firefly {
-    origin: Vec3,
-    phase: f32,
-    speed: f32,
-    radius: f32,
-}
-
-#[derive(Component)]
 enum HudText {
     Banner,
     SubBanner,
     SeatPanel(Seat),
-}
-
-/// Cheap deterministic noise for scenery layout. Presentation only, so any function will do.
-fn noise(i: i32, j: i32, salt: u32) -> f32 {
-    let mut h = (i as u32).wrapping_mul(0x8da6_b343)
-        ^ (j as u32).wrapping_mul(0xd816_3841)
-        ^ salt.wrapping_mul(0xcb1a_b31f);
-    h ^= h >> 13;
-    h = h.wrapping_mul(0x5bd1_e995);
-    h ^= h >> 15;
-    (h & 0xffff) as f32 / 65535.0
-}
-
-fn emissive_material(color: LinearRgba, strength: f32) -> StandardMaterial {
-    StandardMaterial {
-        base_color: Color::srgb(0.08, 0.07, 0.06),
-        emissive: color * strength,
-        perceptual_roughness: 0.6,
-        ..default()
-    }
 }
 
 fn spawn_scene(
@@ -113,22 +80,7 @@ fn spawn_scene(
 ) {
     let camera = camera_transform(1.0);
     commands.spawn((
-        Camera3d::default(),
-        Hdr,
-        Tonemapping::TonyMcMapface,
-        Bloom {
-            intensity: 0.22,
-            ..Bloom::NATURAL
-        },
-        DistanceFog {
-            color: Color::srgb(0.02, 0.025, 0.06),
-            falloff: FogFalloff::Linear {
-                start: 12.0,
-                end: 34.0,
-            },
-            ..default()
-        },
-        camera,
+        night_camera(camera, (12.0, 34.0)),
         CameraRig { base: camera },
     ));
 
@@ -145,7 +97,14 @@ fn spawn_scene(
     spawn_ground(&mut commands, &mut meshes, &mut materials);
     spawn_lantern(&mut commands, &mut meshes, &mut materials);
     spawn_side_lanterns(&mut commands, &mut meshes, &mut materials);
-    spawn_fireflies(&mut commands, &mut meshes, &mut materials);
+    spawn_fireflies(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        FIREFLY_COUNT,
+        Vec3::new(-8.5, 0.5, -6.0),
+        Vec3::new(8.5, 3.7, 3.0),
+    );
 
     let players = active.run.players;
     let count = players.count() as f32;
@@ -264,13 +223,6 @@ fn spawn_side_lanterns(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
 ) {
-    let pole_mesh = meshes.add(Cuboid::new(0.12, 2.4, 0.12));
-    let paper_mesh = meshes.add(Cuboid::new(0.42, 0.55, 0.42));
-    let pole = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.06, 0.045, 0.035),
-        perceptual_roughness: 0.9,
-        ..default()
-    });
     let spots = [
         (Vec3::new(-6.5, 0.0, -4.5), LinearRgba::rgb(1.0, 0.3, 0.55)),
         (Vec3::new(6.5, 0.0, -4.5), LinearRgba::rgb(0.25, 0.75, 1.0)),
@@ -280,61 +232,10 @@ fn spawn_side_lanterns(
         (Vec3::new(3.6, 0.0, -5.5), LANTERN_WARM),
     ];
     for (pos, color) in spots {
-        commands.spawn((
-            Mesh3d(pole_mesh.clone()),
-            MeshMaterial3d(pole.clone()),
-            Transform::from_translation(pos + Vec3::Y * 1.2),
-        ));
-        commands.spawn((
-            Mesh3d(paper_mesh.clone()),
-            MeshMaterial3d(materials.add(emissive_material(color, 2.2))),
-            Transform::from_translation(pos + Vec3::Y * 2.55),
-            children![(
-                PointLight {
-                    color: Color::from(color),
-                    intensity: 80_000.0,
-                    range: 7.0,
-                    ..default()
-                },
-                Transform::default(),
-            )],
-        ));
+        spawn_paper_lantern(commands, meshes, materials, pos, color);
     }
 }
 
-fn spawn_fireflies(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
-) {
-    let mesh = meshes.add(Cuboid::new(0.06, 0.06, 0.06));
-    let glow = materials.add(StandardMaterial {
-        base_color: Color::BLACK,
-        emissive: LinearRgba::rgb(0.75, 1.0, 0.3) * 10.0,
-        ..default()
-    });
-    for k in 0..FIREFLY_COUNT as i32 {
-        let origin = Vec3::new(
-            (noise(k, 0, 10) - 0.5) * 17.0,
-            0.5 + noise(k, 0, 11) * 3.2,
-            -6.0 + noise(k, 0, 12) * 9.0,
-        );
-        commands.spawn((
-            Firefly {
-                origin,
-                phase: noise(k, 0, 13) * 100.0,
-                speed: 0.25 + noise(k, 0, 14) * 0.5,
-                radius: 0.3 + noise(k, 0, 15) * 0.7,
-            },
-            Mesh3d(mesh.clone()),
-            MeshMaterial3d(glow.clone()),
-            Transform::from_translation(origin),
-        ));
-    }
-}
-
-/// Placeholder "lantern folk": every character shares this body plan; the glowing head is
-/// where their personality (and player colour) lives.
 fn spawn_character(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -342,113 +243,22 @@ fn spawn_character(
     seat: Seat,
     base: Vec3,
 ) {
-    let color = seat_color(seat);
-    let body = materials.add(StandardMaterial {
-        base_color: Color::from(color * 0.12 + LinearRgba::rgb(0.03, 0.03, 0.04)),
-        perceptual_roughness: 0.8,
-        ..default()
+    let folk = spawn_lantern_folk(
+        commands,
+        meshes,
+        materials,
+        seat,
+        Transform::from_translation(base),
+    );
+    commands.entity(folk.root).insert(Character {
+        seat,
+        base,
+        head_material: folk.head_material,
+        head_light: folk.head_light,
+        seen: Reaction::Waiting,
+        seen_generation: 0,
+        hop_started: None,
     });
-    let dark = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.02, 0.02, 0.025),
-        perceptual_roughness: 0.5,
-        ..default()
-    });
-    let head_material = materials.add(emissive_material(color, 1.8));
-    let marker_material = materials.add(StandardMaterial {
-        base_color: Color::BLACK,
-        emissive: color * 4.0,
-        ..default()
-    });
-    let marker_mesh = match seat.0 {
-        0 => meshes.add(Sphere::new(0.15)),
-        1 => meshes.add(Cone::new(0.17, 0.32)),
-        2 => meshes.add(Cuboid::new(0.26, 0.26, 0.26)),
-        _ => meshes.add(Cuboid::new(0.22, 0.22, 0.22)),
-    };
-    let marker_rotation = if seat.0 == 3 {
-        Quat::from_rotation_z(PI / 4.0)
-    } else {
-        Quat::IDENTITY
-    };
-
-    let head_light = commands
-        .spawn((
-            PointLight {
-                color: Color::from(color),
-                intensity: 40_000.0,
-                range: 4.0,
-                ..default()
-            },
-            Transform::from_xyz(0.0, 1.42, 0.5),
-        ))
-        .id();
-
-    let leg = meshes.add(Cuboid::new(0.22, 0.32, 0.26));
-    let arm = meshes.add(Cuboid::new(0.18, 0.46, 0.22));
-    let eye = meshes.add(Cuboid::new(0.1, 0.15, 0.04));
-    let rim = meshes.add(Cuboid::new(0.82, 0.09, 0.72));
-
-    commands
-        .spawn((
-            Character {
-                seat,
-                base,
-                head_material: head_material.clone(),
-                head_light,
-                seen: Reaction::Waiting,
-                seen_generation: 0,
-                hop_started: None,
-            },
-            Transform::from_translation(base),
-            Visibility::default(),
-        ))
-        .with_children(|root| {
-            for x in [-0.2, 0.2] {
-                root.spawn((
-                    Mesh3d(leg.clone()),
-                    MeshMaterial3d(body.clone()),
-                    Transform::from_xyz(x, 0.16, 0.0),
-                ));
-            }
-            root.spawn((
-                Mesh3d(meshes.add(Cuboid::new(0.8, 0.74, 0.6))),
-                MeshMaterial3d(body.clone()),
-                Transform::from_xyz(0.0, 0.68, 0.0),
-            ));
-            for x in [-0.5, 0.5] {
-                root.spawn((
-                    Mesh3d(arm.clone()),
-                    MeshMaterial3d(body.clone()),
-                    Transform::from_xyz(x, 0.68, 0.0),
-                ));
-            }
-            root.spawn((
-                Mesh3d(meshes.add(Cuboid::new(0.72, 0.62, 0.62))),
-                MeshMaterial3d(head_material),
-                Transform::from_xyz(0.0, 1.42, 0.0),
-            ));
-            for y in [1.08, 1.77] {
-                root.spawn((
-                    Mesh3d(rim.clone()),
-                    MeshMaterial3d(dark.clone()),
-                    Transform::from_xyz(0.0, y, 0.0),
-                ));
-            }
-            for x in [-0.15, 0.15] {
-                root.spawn((
-                    Mesh3d(eye.clone()),
-                    MeshMaterial3d(dark.clone()),
-                    Transform::from_xyz(x, 1.45, 0.32),
-                ));
-            }
-            root.spawn((
-                Marker { base_y: 2.35 },
-                Mesh3d(marker_mesh),
-                MeshMaterial3d(marker_material),
-                Transform::from_xyz(0.0, 2.35, 0.0).with_rotation(marker_rotation),
-            ));
-        })
-        .add_child(head_light);
 }
 
 /// The unlit lantern smoulders faintly, so the moment it lights is unmistakable.
@@ -549,29 +359,6 @@ fn animate_characters(
         if let Ok(mut light) = lights.get_mut(character.head_light) {
             light.intensity = 22_000.0 * glow;
         }
-    }
-}
-
-fn animate_fireflies(
-    time: Res<Time>,
-    mut fireflies: Query<(&Firefly, &mut Transform), Without<Marker>>,
-    mut markers: Query<(&Marker, &mut Transform), Without<Firefly>>,
-) {
-    let t = time.elapsed_secs();
-    for (fly, mut transform) in &mut fireflies {
-        let p = t * fly.speed + fly.phase;
-        transform.translation = fly.origin
-            + Vec3::new(
-                p.sin() * fly.radius,
-                (p * 1.3).sin() * fly.radius * 0.5,
-                (p * 0.7).cos() * fly.radius,
-            );
-        let twinkle = 0.6 + 0.4 * (t * 3.0 + fly.phase).sin().max(0.0);
-        transform.scale = Vec3::splat(twinkle);
-    }
-    for (marker, mut transform) in &mut markers {
-        transform.translation.y = marker.base_y + (t * 2.0).sin() * 0.06;
-        transform.rotate_y(time.delta_secs() * 1.2);
     }
 }
 
