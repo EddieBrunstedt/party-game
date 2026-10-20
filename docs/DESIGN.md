@@ -94,7 +94,8 @@ crates/
   net/          # (planned) transport layer (UDP now, Steam later), ggrs driver, board-phase protocol
   game/         # Bevy 0.20: rendering, interpolation, UI, audio, input, menus.
                 #   flow.rs (screen states), runner.rs (input + minigame driver), board_view.rs,
-                #   menus.rs, one view module per minigame, particles.rs, quality.rs, i18n.rs
+                #   menus.rs, intro.rs (instruction card), one view module per minigame,
+                #   characters.rs, particles.rs, audio.rs + sfx.rs, quality.rs, i18n.rs
   tools/        # headless CLI: `check` (all quality bars), `bots` (bot-only matches), `board` (bot-only board games)
 ```
 
@@ -158,8 +159,10 @@ Determinism rules for simulation code:
 - **Boards:** the space graph is a **RON file**, the source of truth that the simulation loads without Bevy. The Blender scene is decoration around the graph's coordinates. A script can push the graph points into Blender as guides, and an in-game debug view draws the graph.
 - **Audio:**
   - royalty-free/CC0 packs, and procedural SFX made in code (sfxr-style)
+  - today every effect is procedural: `game/src/sfx.rs` is a small deterministic synth, and `game/src/audio.rs` holds one recipe per `Sound` plus a looping night ambience (crickets over wind) on its own channel. They're rendered at startup, so no audio files ship. `--dump-sfx <dir>` writes them all as WAVs for listening.
+  - views fire sounds and particle bursts once per event: minigames from `MinigameSet::React` (in `FixedUpdate`, after the step), diffing `ActiveRun::ticked()` (the state before and after that tick); the board as each event starts playing
   - later experiment: music made in Reaper with your VSTs
-  - playback through `bevy_kira_audio`
+  - playback through `bevy_kira_audio` (Bevy's own audio plugin is disabled)
   - check Steam's rules on AI-generated content before using any
 - **Localization:** English only at launch, but every UI string goes through Fluent keys from day one: `crates/game/locales/en/main.ftl`, read with `tr!("key", name = value)`. Minigame names are keyed by registry id (`minigame-<id>`).
 
@@ -172,7 +175,7 @@ Determinism rules for simulation code:
 | Particles | bevy_hanabi | Use git main until the 0.20 release |
 | Blender components | bevy_skein | Use git main until the 0.20 release. **Not** the crates.io `skein` crate, which is an unrelated hash crate |
 | Input | none for now: our own small mapper | [ADR 0007](adr/0007-input-mapping.md); revisit (bevy_enhanced_input first) when rebinding arrives |
-| Audio | bevy_kira_audio 0.27 | |
+| Audio | bevy_kira_audio 0.27 (+ kira 0.12 for building sounds from samples) | Default features off but `wav`, which it needs to build |
 | Steam (later) | steamworks 0.13 | Used directly, not through bevy-steamworks |
 | Avoid | matchbox (stalled, incompatible with ggrs 0.13), Blenvy (abandoned) | |
 

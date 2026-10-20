@@ -5,16 +5,18 @@ use std::f32::consts::TAU;
 
 use bevy::prelude::*;
 use minigame_lantern_push::{
-    DASH_COOLDOWN, FALL_TICKS, Fighter, LanternPush, MIN_RADIUS, Phase, START_RADIUS, State,
-    Status, platform_radius,
+    DASH_COOLDOWN, FALL_TICKS, Fighter, LanternPush, MIN_RADIUS, PLAY_TICKS, Phase, SHRINK_START,
+    START_RADIUS, State, Status, platform_radius,
 };
 use sim_core::physics::Vec2 as SimVec2;
 use sim_core::{Format, Seat, TICK_HZ};
 
+use crate::audio::{Sfx, Sound};
 use crate::characters::{Character, Pose, Roster};
 use crate::flow::AppState;
 use crate::i18n::{self, bot_tag, halted_banner};
 use crate::palette::{LANTERN_WARM, MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
+use crate::particles::{self, Effects, hdr};
 use crate::runner::{ActiveRun, MinigameSet, Seats};
 use crate::scenery::{emissive_material, night_camera, noise, spawn_fireflies, spawn_lantern_folk};
 use crate::tr;
@@ -41,7 +43,92 @@ impl Plugin for LanternPushViewPlugin {
                 update_hud,
             )
                 .run_if(resource_exists::<ActiveRun<LanternPush>>),
+        )
+        .add_systems(
+            FixedUpdate,
+            react
+                .in_set(MinigameSet::React)
+                .run_if(resource_exists::<ActiveRun<LanternPush>>),
         );
+    }
+}
+
+/// Sounds and sparks, once per event: dashes, braces, hits, falls, the shrinking platform,
+/// the last seconds and the win.
+fn react(
+    mut commands: Commands,
+    active: Res<ActiveRun<LanternPush>>,
+    effects: Res<Effects>,
+    sfx: Sfx,
+) {
+    let Some((before, now)) = active.ticked() else {
+        return;
+    };
+    let mut spark = |pos: Vec3, color: Vec4| {
+        particles::burst(
+            &mut commands,
+            &effects,
+            DespawnOnExit(AppState::Minigame),
+            pos,
+            color,
+        );
+    };
+    for seat in now.players.seats() {
+        let (was, is) = (before.fighter(seat), now.fighter(seat));
+        let variant = now.tick + seat.0 as u32;
+        if was.dash == 0 && is.dash > 0 {
+            sfx.play_varied(Sound::Dash, variant);
+            spark(
+                world(is.body.pos),
+                hdr(LinearRgba::rgb(0.6, 0.55, 0.5), 0.8),
+            );
+        }
+        if !was.bracing() && is.bracing() {
+            sfx.play_varied(Sound::Brace, variant);
+        }
+        if is.last_hit != was.last_hit
+            && let Some(by) = is.last_hit_by
+        {
+            // The one hit last also gets `last_hit` when their dash bounced off a brace.
+            let other = now.fighter(by);
+            if other.bracing() {
+                sfx.play_varied(Sound::Rebound, variant);
+            } else {
+                sfx.play_varied(Sound::Hit, variant);
+            }
+            let contact = world(is.body.pos.lerp(other.body.pos, 0.5)) + Vec3::Y * 0.7;
+            spark(contact, hdr(seat_color(by), 5.0));
+        }
+        if was.standing() && matches!(is.status, Status::Falling { .. }) {
+            sfx.play_varied(Sound::Fall, variant);
+            spark(
+                world(is.body.pos) + Vec3::Y * 0.5,
+                hdr(seat_color(seat), 5.0),
+            );
+        }
+    }
+    if now.phase == Phase::Playing {
+        if before.tick < SHRINK_START && now.tick >= SHRINK_START {
+            sfx.play(Sound::Rumble);
+        }
+        let left = PLAY_TICKS.saturating_sub(now.tick);
+        if left > 0 && left <= 5 * TICK_HZ && left % TICK_HZ == 0 && before.tick != now.tick {
+            sfx.play(Sound::Tick);
+        }
+    }
+    if before.outcome.is_none()
+        && let Some(outcome) = now.outcome
+    {
+        sfx.play(Sound::Win);
+        for seat in outcome.winners() {
+            let fighter = now.fighter(seat);
+            if fighter.standing() {
+                spark(
+                    world(fighter.body.pos) + Vec3::Y * 1.6,
+                    hdr(seat_color(seat), 6.0),
+                );
+            }
+        }
     }
 }
 

@@ -1,3 +1,4 @@
+mod audio;
 mod board_view;
 mod characters;
 mod dev;
@@ -15,6 +16,7 @@ mod quality;
 mod quick_draw;
 mod runner;
 mod scenery;
+mod sfx;
 
 use std::path::PathBuf;
 
@@ -79,6 +81,9 @@ struct Cli {
     /// Log every gamepad button press (diagnoses controller mappings).
     #[arg(long)]
     log_input: bool,
+    /// Write every sound effect to this directory as WAVs, then exit.
+    #[arg(long, value_name = "DIR")]
+    dump_sfx: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -141,6 +146,15 @@ fn asset_dir() -> String {
 
 fn main() {
     let cli = Cli::parse();
+    if let Some(dir) = &cli.dump_sfx {
+        audio::dump(dir).expect("couldn't write the sounds");
+        println!(
+            "Wrote {} sounds to {}",
+            audio::Sound::ALL.len() + 1,
+            dir.display()
+        );
+        return;
+    }
     let players = cli.players.clamp(2, 4);
     let humans = cli.humans.min(players);
     let seed = cli.seed.unwrap_or_else(|| {
@@ -184,7 +198,9 @@ fn main() {
             .set(AssetPlugin {
                 file_path: asset_dir(),
                 ..default()
-            }),
+            })
+            // Sound goes through bevy_kira_audio (`audio.rs`) instead.
+            .disable::<bevy::audio::AudioPlugin>(),
     )
     .insert_resource(Time::<Fixed>::from_hz(TICK_HZ as f64))
     .insert_resource(Seats(seats))
@@ -196,6 +212,7 @@ fn main() {
         quality::QualityPlugin(cli.quality),
         scenery::SceneryPlugin,
         characters::CharactersPlugin,
+        audio::AudioPlugin,
     ));
 
     app.add_plugins((

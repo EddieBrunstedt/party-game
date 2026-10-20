@@ -1,30 +1,30 @@
-# Handoff: session 2026-10-20 (late afternoon)
+# Handoff: session 2026-10-20 (evening)
 
 Briefing for the next session. Earlier sessions' notes are in git history (`git log -p docs/HANDOFF.md`).
 
 ## Done this session
 
-- Committed the previous session's work (shared instruction card, Firefly Catch readability) after tests and clippy passed.
-- **Four lantern-folk characters** (ROADMAP ticked): `art/lantern_folk.py` builds them in Blender on one rig with `idle`, `hop`, `celebrate` and `slump`, and exports `crates/game/assets/characters/*.glb`. `game/src/characters.rs` loads them, recolours `Body`/`Glow`/`Accent` per seat, moves the head light onto the head bone, and plays whatever `Pose` a view sets on the character's root. Every view now sets poses instead of bouncing the root in code.
-- Small fixes: `assets/` is found when the binary runs outside cargo (gamescope); "P1 & P4 take the round".
-- Evidence: workspace tests, clippy and fmt pass; screenshots of every scene; Deck GPU time unchanged (Quick Draw 0.55 ms).
+- **Four lantern-folk characters**, ticked; the developer's verdict was "Looks good". `art/lantern_folk.py` builds them in Blender; `game/src/characters.rs` plays a `Pose` per character.
+- **Polish pass 1, first pass** (not ticked: it needs a human playtest). Synthesized sound for menus, the card and countdown, Quick Draw, Lantern Push, the board and results (`sfx.rs`, `audio.rs`), plus night ambience. Particle bursts on the key events in Quick Draw, Lantern Push and the board. Details are in ROADMAP under Polish pass 1.
+- CI now pulls `crates/game/assets/` from LFS, because a test reads the `.glb` files. Not yet seen running on GitLab; nothing has been pushed this session.
 
 ## State of the tree
 
-Committed. `.glb` and `.blend` go through Git LFS (`.gitattributes`); `art/*.blend1` is ignored.
+Committed.
 
 ## Decisions
 
-- The script is the source of the characters: edit `art/lantern_folk.py` and re-run it, rather than editing the `.blend`. Through the MCP: `exec(compile(open(p).read(), p, "exec"), {"__file__": p, "__name__": "__main__"})`, with `result` set to a dict.
-- Firefly Catch is still **on hold** (see ROADMAP); it only got the pose change.
+- Every sound is a recipe in code for now, with no audio files: tweaking is editing numbers, and `--dump-sfx <dir>` writes WAVs to listen to. CC0 packs can replace individual sounds later (bevy_kira_audio's `wav` feature is on).
+- Minigame sounds and effects come from diffing `ActiveRun::ticked()` in `MinigameSet::React`, never from per-frame view code, so they fire exactly once per event.
+- Firefly Catch is still **on hold**. It only gets the shared card and countdown sounds.
 
 ## Next
 
-**Polish pass 1** (ROADMAP). It needs a human playtest to finish, so ask the developer to look at the characters first (do they read at board distance, and do the animations have enough life?), then work through audio, particles and the polished definition for Quick Draw, Lantern Push and the board.
+A **human playtest**: listen to the sounds (`cargo run -p game -- --dump-sfx /tmp/sfx`, or just play), then a full board game with humans (`cargo run -p game`). Fix what they find, then tick Polish pass 1. After that the roadmap moves on to Milestone 2 (online), which isn't broken down yet.
 
 ## Useful to know
 
-- To look at the models in Blender, render a pose sheet: hide all but one character mesh, set `LanternFolk.animation_data.action` to a clip, call `frame_set`, and render with EEVEE. The four meshes share the rig and overlap at the origin.
-- Scripted board session: `--press-every 1.5:Space --press 5:Enter`. `--humans 0` minigame runs spend about 3 s on the instruction card. A Quick Draw match with seed 3 ends at about 60 s.
-- `/tmp` has a per-user quota; keep scratch builds small.
+- Spectrograms are a quick check of a sound's shape: `ffmpeg -i x.wav -lavfi showspectrumpic=s=320x160:legend=0:fscale=log x.png`.
+- `ls -v` sorts `shot-2.png` before `shot-10.png` for montages; a plain glob doesn't.
+- Rendering pose sheets in Blender, the scripted board session flags and `/tmp` quota notes are in the previous handoff (`git log -p docs/HANDOFF.md`).
 - Still open: 12 bot rounds take about 22 minutes, so the 30–40 minute target may need 15. Board bots hash `usize` lengths, which would desync with 32-bit peers.

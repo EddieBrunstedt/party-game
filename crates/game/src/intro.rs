@@ -12,6 +12,7 @@
 use bevy::prelude::*;
 use sim_core::{Button, COUNTDOWN_TICKS, Format, MAX_PLAYERS, Minigame, Run, Seat, TICK_HZ};
 
+use crate::audio::{Sfx, Sound};
 use crate::board_view::format_text;
 use crate::flow::{AppState, MinigameLaunch};
 use crate::i18n::{bot_tag, has_key};
@@ -74,8 +75,21 @@ pub fn show_countdown<M: Minigame>(
     active: Res<ActiveRun<M>>,
     card: Option<Res<InstructionCard>>,
     mut texts: Query<&mut Text, With<CountdownText>>,
+    mut heard: Local<Option<u32>>,
+    sfx: Sfx,
 ) {
     let run: &Run<M> = &active.run;
+    if card.is_none() {
+        // A beep per number, and a brighter one as play starts.
+        let counting = countdown(run.tick);
+        if counting != *heard {
+            match counting {
+                Some(_) => sfx.play(Sound::Count),
+                None => sfx.play(Sound::Go),
+            }
+            *heard = counting;
+        }
+    }
     // A halted run shows its own banner in the same place.
     let halted = run.paused || run.waiting_for_controller();
     let number = countdown(run.tick).filter(|_| card.is_none() && !halted);
@@ -126,10 +140,12 @@ fn open_card(
     launch: Option<Res<MinigameLaunch>>,
     seats: Res<Seats>,
     time: Res<Time>,
+    sfx: Sfx,
 ) {
     let Some(launch) = launch else {
         return;
     };
+    sfx.play(Sound::MinigameStart);
     let id = launch.id.as_str();
     let format = launch.setup.format;
     let players = launch.setup.players;
@@ -253,6 +269,7 @@ fn update_card(
     time: Res<Time>,
     mut latch: ResMut<PressLatch>,
     mut chips: Query<(&ReadyChip, &mut Text)>,
+    sfx: Sfx,
 ) {
     let now = time.elapsed_secs();
     for seat in Seat::ALL {
@@ -261,8 +278,9 @@ fn update_card(
         }
         // A seat whose pad is gone can't press anything; don't hold everyone else up.
         let lost = inputs.0.current[seat.index()].held(Button::CONTROLLER_LOST);
-        if lost || inputs.just_pressed(seat, Button::A) {
+        if !card.ready[seat.index()] && (lost || inputs.just_pressed(seat, Button::A)) {
             card.ready[seat.index()] = true;
+            sfx.play(Sound::Ready);
         }
     }
     for (chip, mut label) in &mut chips {

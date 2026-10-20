@@ -85,6 +85,9 @@ pub struct ActiveRun<M: Minigame> {
     /// Seats whose Start was already down when this run began (e.g. the Start that launched
     /// it). Their Start is ignored until released, so the game doesn't open paused.
     start_held: [bool; MAX_PLAYERS],
+    /// Whether the last fixed update stepped the run, so `previous` -> `run.game` is a tick
+    /// nobody has reacted to yet. See [`ActiveRun::ticked`].
+    stepped: bool,
 }
 
 impl<M: Minigame> ActiveRun<M> {
@@ -98,7 +101,14 @@ impl<M: Minigame> ActiveRun<M> {
             generation: 0,
             finished_ticks: 0,
             start_held: [true; MAX_PLAYERS],
+            stepped: false,
         }
+    }
+
+    /// The state before and after the tick just stepped, if one was; for sounds and effects
+    /// that must fire exactly once per event. Read it from [`MinigameSet::React`].
+    pub fn ticked(&self) -> Option<(&M::State, &M::State)> {
+        self.stepped.then_some((&self.previous, &self.run.game))
     }
 
     fn restart(&mut self) {
@@ -131,6 +141,8 @@ pub struct PressLatch(pub [u8; MAX_PLAYERS]);
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum MinigameSet {
     Start,
+    /// In `FixedUpdate`, right after the run steps: where views react to [`ActiveRun::ticked`].
+    React,
 }
 
 /// Runs minigame `M` whenever a [`MinigameLaunch`] names it.
@@ -204,7 +216,9 @@ impl<M: Minigame> Plugin for MinigamePlugin<M> {
         .add_systems(OnExit(AppState::Minigame), stop_run::<M>)
         .add_systems(
             FixedUpdate,
-            step_run::<M>.run_if(resource_exists::<ActiveRun<M>>),
+            step_run::<M>
+                .run_if(resource_exists::<ActiveRun<M>>)
+                .before(MinigameSet::React),
         )
         .add_systems(
             Update,
@@ -350,6 +364,7 @@ fn step_run<M: Minigame>(
     card: Option<Res<InstructionCard>>,
 ) {
     let latched = std::mem::take(&mut latch.0);
+    active.stepped = false;
     // Nothing happens until everyone has read the instruction card.
     if card.is_some() {
         return;
@@ -403,4 +418,5 @@ fn step_run<M: Minigame>(
     }
     active.previous = active.run.game.clone();
     active.run.step(inputs);
+    active.stepped = true;
 }

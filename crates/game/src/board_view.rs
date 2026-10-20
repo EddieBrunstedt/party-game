@@ -12,10 +12,12 @@ use bevy::prelude::*;
 use sim_board::{Awaiting, Board, Decision, Event, Game, Intent, SpaceId, SpaceKind, bot_intent};
 use sim_core::{Button, Format, MAX_PLAYERS, Outcome, Seat};
 
+use crate::audio::{Sfx, Sound};
 use crate::characters::{Pose, Roster};
 use crate::flow::{AppState, MinigameLaunch, MinigameResult, Origin};
 use crate::i18n::{bot_tag, names};
 use crate::palette::{LANTERN_WARM, MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
+use crate::particles::{self, Effects, hdr};
 use crate::runner::{Controller, RunSetup, SeatInputs, Seats};
 use crate::scenery::{
     emissive_material, night_camera, noise, spawn_fireflies, spawn_lantern_folk,
@@ -35,6 +37,7 @@ impl Plugin for BoardViewPlugin {
             Update,
             (
                 play_events,
+                react_to_events,
                 decide,
                 (move_pawns, animate_star, follow_camera).chain(),
                 fork_arrows,
@@ -221,6 +224,65 @@ fn play_events(time: Res<Time>, mut session: ResMut<BoardSession>) {
             serial: session.played,
             started: now,
         });
+    }
+}
+
+/// A sound (and sometimes sparks over the pawn) as each event starts playing.
+fn react_to_events(
+    mut commands: Commands,
+    session: Res<BoardSession>,
+    pawns: Query<(&Pawn, &Transform)>,
+    effects: Res<Effects>,
+    sfx: Sfx,
+    mut seen: Local<u64>,
+) {
+    let Some(playing) = &session.playing else {
+        return;
+    };
+    if *seen == playing.serial {
+        return;
+    }
+    *seen = playing.serial;
+    let above = |seat: Seat| {
+        pawns
+            .iter()
+            .find(|(p, _)| p.seat == seat)
+            .map(|(_, t)| t.translation + Vec3::Y * 1.2)
+    };
+    let mut spark = |seat: Seat, color: Vec4| {
+        if let Some(at) = above(seat) {
+            particles::burst(
+                &mut commands,
+                &effects,
+                DespawnOnExit(AppState::Board),
+                at,
+                color,
+            );
+        }
+    };
+    match &playing.event {
+        Event::TurnOrderRolled { .. } | Event::Rolled { .. } => sfx.play(Sound::DiceStop),
+        Event::RoundStarted { .. } => sfx.play(Sound::Ready),
+        Event::TurnStarted { .. } => sfx.play(Sound::TurnStart),
+        Event::Moved { .. } => sfx.play_varied(Sound::Step, playing.serial as u32),
+        Event::StarBought { seat, .. } => {
+            sfx.play(Sound::Star);
+            spark(*seat, hdr(STAR_GOLD, 8.0));
+        }
+        Event::StarDeclined { .. } => sfx.play(Sound::Back),
+        Event::StarCannotAfford { .. } => sfx.play(Sound::TooSlow),
+        Event::StarMoved { .. } => sfx.play(Sound::Fall),
+        Event::CoinsChanged { seat, delta, .. } if *delta > 0 => {
+            sfx.play(Sound::CoinsUp);
+            spark(*seat, hdr(STAR_GOLD, 4.0));
+        }
+        Event::CoinsChanged { seat, delta, .. } if *delta < 0 => {
+            sfx.play(Sound::CoinsDown);
+            spark(*seat, hdr(RED, 3.0));
+        }
+        Event::MinigameChosen { .. } => sfx.play(Sound::Join),
+        Event::MinigameFinished { .. } => sfx.play(Sound::RoundWin),
+        _ => {}
     }
 }
 

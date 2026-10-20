@@ -26,6 +26,10 @@ minigame-firefly-catch = { path = "crates/minigames/firefly-catch" }
 bevy = "0.20"
 # Git main until its Bevy 0.20 release (ADR 0005): "Migrate to Bevy 0.20 and WESL shaders (#576)".
 bevy_hanabi = { git = "https://github.com/djeedai/bevy_hanabi", rev = "77630ff1eed8b104f34e91d23e9440428dc5ab01", default-features = false, features = ["3d"] }
+# Sounds are synthesized in code (game/src/sfx.rs). WAV is the one decoder, and bevy_kira_audio
+# doesn't build without at least one.
+bevy_kira_audio = { version = "0.27", default-features = false, features = ["wav"] }
+kira = { version = "0.12", default-features = false }
 ggrs = { version = "0.13", features = ["sync-send"] }
 libm = "0.2"
 serde = { version = "1", features = ["derive"] }

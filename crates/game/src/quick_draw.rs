@@ -4,10 +4,12 @@ use bevy::prelude::*;
 use minigame_quick_draw::{POINTS_TO_WIN, Phase, QuickDraw, Reaction, State};
 use sim_core::{Seat, TICK_HZ};
 
+use crate::audio::{Sfx, Sound};
 use crate::characters::{Character, HOP_SECONDS, Pose, Roster};
 use crate::flow::AppState;
 use crate::i18n::{self, bot_tag, halted_banner, names};
 use crate::palette::{LANTERN_WARM, MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
+use crate::particles::{self, Effects, hdr};
 use crate::runner::{ActiveRun, MinigameSet, Seats};
 use crate::scenery::{
     emissive_material, night_camera, noise, spawn_fireflies, spawn_lantern_folk,
@@ -34,10 +36,17 @@ impl Plugin for QuickDrawViewPlugin {
                 update_hud,
             )
                 .run_if(resource_exists::<ActiveRun<QuickDraw>>),
+        )
+        .add_systems(
+            FixedUpdate,
+            react
+                .in_set(MinigameSet::React)
+                .run_if(resource_exists::<ActiveRun<QuickDraw>>),
         );
     }
 }
 
+const SCOPE: DespawnOnExit<AppState> = DespawnOnExit(AppState::Minigame);
 const LANTERN_POS: Vec3 = Vec3::new(0.0, 3.7, -2.6);
 const CHARACTER_SPACING: f32 = 2.3;
 const FIREFLY_COUNT: usize = 48;
@@ -314,6 +323,75 @@ fn animate_lantern(
     }
     for mut light in &mut light {
         light.intensity = lumens;
+    }
+}
+
+/// A heartbeat this often while the lantern is dark (not tied to when it lights).
+const HEARTBEAT_TICKS: u16 = 45;
+
+/// Sounds and sparks, once per event: the wait, the lantern lighting, every press, the wins.
+fn react(
+    mut commands: Commands,
+    active: Res<ActiveRun<QuickDraw>>,
+    contestants: Query<(&Contestant, &Transform)>,
+    effects: Res<Effects>,
+    sfx: Sfx,
+) {
+    let Some((before, now)) = active.ticked() else {
+        return;
+    };
+    let head = |seat: Seat| {
+        contestants
+            .iter()
+            .find(|(c, _)| c.seat == seat)
+            .map(|(_, t)| t.translation + Vec3::Y * 1.5)
+    };
+    let mut spark = |pos: Vec3, color: Vec4| {
+        particles::burst(&mut commands, &effects, SCOPE, pos, color);
+    };
+
+    match (before.phase, now.phase) {
+        (_, Phase::Waiting { t, .. }) if t % HEARTBEAT_TICKS == 0 => {
+            sfx.play_with(Sound::Heartbeat, 1.0, -3.0);
+        }
+        (Phase::Waiting { .. }, Phase::Drawn { .. }) => {
+            sfx.play(Sound::Ignite);
+            spark(LANTERN_POS, hdr(LANTERN_WARM, 8.0));
+        }
+        (Phase::Drawn { .. }, Phase::RoundOver { .. }) if now.round_winners.iter().any(|w| *w) => {
+            sfx.play(Sound::RoundWin);
+        }
+        (Phase::RoundOver { .. }, Phase::Finished) => sfx.play(Sound::Win),
+        _ => {}
+    }
+
+    for seat in now.players.seats() {
+        let i = seat.index();
+        if before.reactions[i] != now.reactions[i] {
+            match now.reactions[i] {
+                Reaction::Fired { .. } => sfx.play_varied(Sound::Draw, seat.0 as u32),
+                Reaction::FalseStart => {
+                    sfx.play(Sound::FalseStart);
+                    if let Some(at) = head(seat) {
+                        spark(at, hdr(LinearRgba::rgb(0.5, 0.5, 0.6), 1.2));
+                    }
+                }
+                Reaction::TooSlow => sfx.play(Sound::TooSlow),
+                Reaction::Waiting => {}
+            }
+        }
+        let won_round = !before.round_winners[i] && now.round_winners[i];
+        let won_match = now.phase == Phase::Finished
+            && before.phase != Phase::Finished
+            && now.scores[i] == *now.scores.iter().max().unwrap_or(&0);
+        if (won_round || won_match)
+            && let Some(at) = head(seat)
+        {
+            spark(at, hdr(seat_color(seat), 6.0));
+            if won_match {
+                spark(at + Vec3::Y * 0.6, hdr(LANTERN_WARM, 6.0));
+            }
+        }
     }
 }
 

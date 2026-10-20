@@ -11,6 +11,7 @@ use bevy::prelude::*;
 use sim_board::{Board, Game, Rules};
 use sim_core::{Difficulty, Format, FormatKind, MAX_PLAYERS, PlayerSetup, Seat};
 
+use crate::audio::{Sfx, Sound};
 use crate::board_view::{BoardSession, format_text, minigame_title};
 use crate::characters::{Character, Pose, Roster};
 use crate::flow::{AppState, MinigameLaunch, Origin};
@@ -319,10 +320,15 @@ fn title_menu(
     mut mode: ResMut<PlayMode>,
     mut next_state: ResMut<NextState<AppState>>,
     mut exit: MessageWriter<AppExit>,
+    sfx: Sfx,
 ) {
     let any = nav.any();
     menu.selected = step(menu.selected, TITLE_ITEMS.len(), any.up, any.down);
+    if any.up || any.down {
+        sfx.play(Sound::Move);
+    }
     if any.confirm || any.start {
+        sfx.play(Sound::Confirm);
         match menu.selected {
             0 => {
                 *mode = PlayMode::Board;
@@ -501,6 +507,7 @@ fn join_lobby(
     mut lobby: ResMut<Lobby>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
+    sfx: Sfx,
 ) {
     let mut begin = false;
     for (device, press) in nav.0.clone() {
@@ -514,8 +521,10 @@ fn join_lobby(
                     {
                         let character = lobby.next_character(seat, Character::ALL.len() - 1, 1);
                         lobby.joined[seat.index()] = Some((device, character));
+                        sfx.play(Sound::Join);
                     }
                 } else if press.back && lobby.joined.iter().all(Option::is_none) {
+                    sfx.play(Sound::Back);
                     next_state.set(AppState::Title);
                     return;
                 }
@@ -530,9 +539,14 @@ fn join_lobby(
                     let direction = if press.left { -1 } else { 1 };
                     let picked = lobby.next_character(seat, index, direction);
                     lobby.joined[seat.index()] = Some((device, picked));
+                    sfx.play(Sound::Move);
                 }
                 if press.back {
                     lobby.joined[seat.index()] = None;
+                    sfx.play(Sound::Back);
+                }
+                if press.extra || (*mode == PlayMode::Board && (press.up || press.down)) {
+                    sfx.play(Sound::Move);
                 }
                 if press.extra {
                     lobby.bots = match lobby.bots {
@@ -556,6 +570,7 @@ fn join_lobby(
     if !begin {
         return;
     }
+    sfx.play(Sound::Confirm);
     commands.insert_resource(lobby.seats());
     commands.insert_resource(lobby.roster());
     match *mode {
@@ -710,9 +725,13 @@ fn pick_minigame(
     mut text: Query<&mut Text, With<PickText>>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
+    sfx: Sfx,
 ) {
     let entries = minigames::shown_entries();
     let any = nav.any();
+    if any.up || any.down || any.left || any.right {
+        sfx.play(Sound::Move);
+    }
     menu.minigame = step(menu.minigame, entries.len(), any.up, any.down);
     if any.up || any.down {
         menu.format = 0;
@@ -720,10 +739,12 @@ fn pick_minigame(
     let formats = free_play_formats(entries[menu.minigame].formats);
     menu.format = step(menu.format, formats.len(), any.left, any.right);
     if any.back {
+        sfx.play(Sound::Back);
         next_state.set(AppState::Join);
         return;
     }
     if any.confirm || any.start {
+        sfx.play(Sound::Confirm);
         let players = PlayerSetup::first(seats.0.iter().flatten().count().max(2));
         commands.insert_resource(MinigameLaunch {
             id: entries[menu.minigame].id.to_string(),
@@ -823,11 +844,15 @@ fn results_screen(
     mut entered: Local<Option<f32>>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
+    sfx: Sfx,
 ) {
     let now = time.elapsed_secs();
     if session.is_none() {
         *entered = None;
         return;
+    }
+    if entered.is_none() {
+        sfx.play(Sound::Win);
     }
     let since = now - *entered.get_or_insert(now);
     if let Some(session) = &session {
@@ -843,6 +868,7 @@ fn results_screen(
     let no_humans = Seat::ALL.into_iter().all(|s| !seats.is_human(s));
     let any = nav.any();
     if since > 1.5 && (any.confirm || any.start || (no_humans && since > 10.0)) {
+        sfx.play(Sound::Confirm);
         commands.remove_resource::<BoardSession>();
         *entered = None;
         next_state.set(AppState::Title);
