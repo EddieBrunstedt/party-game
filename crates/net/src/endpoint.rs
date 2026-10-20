@@ -8,6 +8,8 @@ use crate::{Clock, PROTOCOL_VERSION, Transport};
 
 /// How often an unanswered hello is repeated.
 const HELLO_INTERVAL: Duration = Duration::from_millis(250);
+/// Goodbyes aren't acked, so each is sent this many times to survive ordinary loss.
+const BYE_COPIES: usize = 3;
 
 #[derive(Debug, Clone)]
 pub struct EndpointConfig {
@@ -26,6 +28,8 @@ pub enum NetEvent<A> {
     Refused(A, Refusal),
     /// A whole reliable message, delivered once and in the order it was sent.
     Message(A, Vec<u8>),
+    /// The peer said goodbye ([`Endpoint::disconnect`]).
+    Disconnected(A),
 }
 
 /// [`Endpoint::send`] to a peer that never connected.
@@ -115,6 +119,18 @@ impl<T: Transport> Endpoint<T> {
         inner.pump();
         inner.tick();
         std::mem::take(&mut inner.events)
+    }
+
+    /// Says goodbye to `addr` and forgets it; it gets [`NetEvent::Disconnected`]. Anything
+    /// still unacked to it is dropped, so send a last message a moment before, not right before.
+    pub fn disconnect(&self, addr: T::Addr) {
+        let mut inner = self.lock();
+        if inner.peers.remove(&addr).is_some() {
+            let bye = Frame::Bye.encode();
+            for _ in 0..BYE_COPIES {
+                inner.transport.send(addr, &bye);
+            }
+        }
     }
 
     pub fn is_connected(&self, addr: T::Addr) -> bool {
@@ -239,6 +255,11 @@ impl<T: Transport> Inner<T> {
                     .into_iter()
                     .map(|message| NetEvent::Message(from, message));
                 self.events.extend(delivered);
+            }
+            Frame::Bye => {
+                if self.peers.remove(&from).is_some() {
+                    self.events.push(NetEvent::Disconnected(from));
+                }
             }
             Frame::Ack { next, beyond } => {
                 if state == Some(PeerState::Connected) {

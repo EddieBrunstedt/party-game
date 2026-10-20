@@ -14,6 +14,8 @@ difficulty-hard = Hard
 title-tagline = A board game of lanterns, fireflies and friendly shoving
 title-board = Board game
 title-free-play = Free play
+title-host = Host online
+title-join = Join online
 title-quit = Quit
 title-controls = Stick / arrows to choose, A / Space to confirm
 
@@ -27,6 +29,33 @@ join-gamepad = gamepad
 join-bots = Bots: { $difficulty } (X)
 join-rounds = Rounds: { $rounds } (up/down)
 join-start = Press Start (Enter) to begin
+join-online = online
+join-hosting = Hosting. Friends join at { $addresses }
+join-hosting-here = 127.0.0.1:{ $port } (this PC)
+join-hosting-lan = { $address }:{ $port } (local network)
+join-hosting-tailscale = { $address }:{ $port } (Tailscale)
+join-connected = Connected to { $address }
+join-host-settings = Bots: { $difficulty }   Rounds: { $rounds }   (the host chooses)
+join-waiting-host = Waiting for the host to press Start
+join-starting = Starting...
+
+## Joining an online game
+connect-title = Join a game
+connect-hint = Type the host's address, or use the d-pad: left/right moves, up/down changes a digit, X deletes.
+connect-actions = A / Enter: connect    B / Esc: back
+connect-connecting = Connecting to { $address }...
+connect-no-answer = No answer from { $address }. Is the host on the join screen, and is the address right?
+connect-no-address = Type the host's address first.
+connect-bad-address = "{ $address }" isn't an address.
+connect-refused-version = The host runs version { $theirs } and you run { $ours }. You both need the same version.
+connect-refused-not-hosting = That machine isn't hosting a game.
+connect-refused-full = That game is full.
+connect-refused-started = That game has already started.
+connect-socket-error = Couldn't open a network port: { $error }
+
+## Notices on the title screen
+notice-host-left = The host closed the game.
+notice-host-failed = Couldn't host on port { $port }: { $error }
 
 ## Free play
 pick-title = Free play

@@ -10,6 +10,8 @@ pub enum AppState {
     #[default]
     Title,
     Join,
+    /// Typing a host's address and waiting to be let in.
+    Connect,
     /// Free play: choose a minigame and format.
     Pick,
     Board,

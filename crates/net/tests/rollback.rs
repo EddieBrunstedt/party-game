@@ -31,9 +31,11 @@ fn play<M: Minigame>(players: usize, format: Format, peers: u16) {
     };
     let report = play_online::<M, _>(transports, &addrs, setup).unwrap();
     assert!(report.compared > 100);
+    // Somewhere, not necessarily everywhere: Quick Draw's bots press so rarely that repeating
+    // the last input often predicts a whole duel right on one machine.
     assert!(
-        report.rollbacks.iter().all(|&n| n > 0),
-        "the lag should have caused rollbacks on every machine: {:?}",
+        report.rollbacks.iter().sum::<u32>() > 0,
+        "the lag should have caused rollbacks: {:?}",
         report.rollbacks
     );
 }

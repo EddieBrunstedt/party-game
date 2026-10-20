@@ -6,8 +6,11 @@
 
 use std::collections::BTreeMap;
 
+use bevy::input::ButtonState;
 use bevy::input::gamepad::GamepadButton;
+use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::prelude::*;
+use net::lobby::{LobbyAction, LobbyState, PeerId};
 use sim_board::{Board, Game, Rules};
 use sim_core::{Difficulty, Format, FormatKind, MAX_PLAYERS, PlayerSetup, Seat};
 
@@ -15,6 +18,7 @@ use crate::audio::{Sfx, Sound};
 use crate::board_view::{BoardSession, format_text, minigame_title};
 use crate::characters::{Character, Pose, Roster};
 use crate::flow::{AppState, MinigameLaunch, Origin};
+use crate::online::{self, NetSettings, Notice, Online, OnlineEvent, OnlineStart};
 use crate::palette::{MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
 use crate::runner::{Controller, Pad, RunSetup, Seats};
 use crate::scenery::{night_camera, spawn_fireflies, spawn_lantern_folk, spawn_paper_lantern};
@@ -32,9 +36,16 @@ impl Plugin for MenusPlugin {
             .add_systems(OnEnter(AppState::Join), spawn_join)
             .add_systems(
                 Update,
-                (join_lobby, show_lobby)
+                (poll_online, join_lobby, show_lobby)
                     .chain()
                     .run_if(in_state(AppState::Join)),
+            )
+            .add_systems(OnEnter(AppState::Connect), spawn_connect)
+            .add_systems(
+                Update,
+                (poll_online, connect_screen)
+                    .chain()
+                    .run_if(in_state(AppState::Connect)),
             )
             .add_systems(OnEnter(AppState::Pick), spawn_pick)
             .add_systems(Update, pick_minigame.run_if(in_state(AppState::Pick)))
@@ -279,7 +290,13 @@ struct TitleMenu {
     selected: usize,
 }
 
-const TITLE_ITEMS: [&str; 3] = ["title-board", "title-free-play", "title-quit"];
+const TITLE_ITEMS: [&str; 5] = [
+    "title-board",
+    "title-free-play",
+    "title-host",
+    "title-join",
+    "title-quit",
+];
 
 #[derive(Component)]
 struct TitleItem(usize);
@@ -288,9 +305,13 @@ fn spawn_title(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    notice: Option<Res<Notice>>,
 ) {
     commands.init_resource::<TitleMenu>();
     commands.remove_resource::<Lobby>();
+    commands.remove_resource::<ConnectScreen>();
+    commands.remove_resource::<OnlineStart>();
+    close_online(&mut commands);
     spawn_backdrop(
         &mut commands,
         &mut meshes,
@@ -303,14 +324,30 @@ fn spawn_title(
     commands.entity(column).with_children(|column| {
         column.spawn(line(GAME_TITLE, 84.0, CREAM));
         column.spawn(line(tr!("title-tagline"), 22.0, DIM));
+        if let Some(notice) = &notice {
+            column.spawn(line(notice.0.clone(), 22.0, CREAM));
+        }
     });
-    let menu = text_column(&mut commands, AppState::Title, -60.0);
+    commands.remove_resource::<Notice>();
+    let menu = text_column(&mut commands, AppState::Title, -30.0);
     commands.entity(menu).with_children(|menu| {
         for (i, key) in TITLE_ITEMS.iter().enumerate() {
-            menu.spawn((TitleItem(i), line(tr!(key), 32.0, CREAM)));
+            menu.spawn((TitleItem(i), line(tr!(key), 26.0, CREAM)));
         }
         menu.spawn(line(tr!("title-controls"), 18.0, DIM));
     });
+}
+
+#[allow(clippy::too_many_arguments)]
+/// Starts hosting a board game, or says why it couldn't.
+pub fn host_online(port: u16) -> Result<Online, Notice> {
+    Online::host(port, Lobby::new(PlayMode::Board).state).map_err(|e| {
+        Notice(tr!(
+            "notice-host-failed",
+            port = port as u32,
+            error = e.to_string()
+        ))
+    })
 }
 
 fn title_menu(
@@ -318,6 +355,8 @@ fn title_menu(
     mut menu: ResMut<TitleMenu>,
     mut items: Query<(&TitleItem, &mut Text, &mut TextColor)>,
     mut mode: ResMut<PlayMode>,
+    settings: Res<NetSettings>,
+    mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
     mut exit: MessageWriter<AppExit>,
     sfx: Sfx,
@@ -338,6 +377,21 @@ fn title_menu(
                 *mode = PlayMode::FreePlay;
                 next_state.set(AppState::Join);
             }
+            2 => {
+                *mode = PlayMode::Board;
+                match host_online(settings.port) {
+                    Ok(online) => {
+                        commands.insert_resource(online);
+                        next_state.set(AppState::Join);
+                    }
+                    Err(notice) => {
+                        commands.insert_resource(notice);
+                        // Re-enter the title to show it.
+                        next_state.set(AppState::Title);
+                    }
+                }
+            }
+            3 => next_state.set(AppState::Connect),
             _ => {
                 exit.write(AppExit::Success);
             }
@@ -358,80 +412,63 @@ fn title_menu(
 // ---------------------------------------------------------------------------------------------
 // Join
 
-/// Who has joined, on what device, as which character; and the session settings.
+/// Who has joined, on what device, as which character; and the session settings. The rules
+/// are `net`'s [`LobbyState`], the same on the couch (this machine is the host, alone) and
+/// online (the host's copy is the real one, and a client shows what the host last sent).
 #[derive(Resource, Clone)]
 pub struct Lobby {
-    joined: [Option<(Device, Character)>; MAX_PLAYERS],
-    bots: Difficulty,
-    rounds: u32,
-}
-
-const ROUND_CHOICES: [u32; 5] = [6, 9, 12, 15, 20];
-
-impl Default for Lobby {
-    fn default() -> Self {
-        Self {
-            joined: [None; MAX_PLAYERS],
-            bots: Difficulty::Normal,
-            rounds: Rules::default().rounds,
-        }
-    }
+    state: LobbyState,
+    /// This machine's controllers, numbered in the order they first pressed A here.
+    devices: Vec<Device>,
 }
 
 impl Lobby {
-    fn seat_of(&self, device: Device) -> Option<Seat> {
-        Seat::ALL
-            .into_iter()
-            .find(|s| matches!(self.joined[s.index()], Some((d, _)) if d == device))
+    fn new(mode: PlayMode) -> Self {
+        let state = LobbyState::new(
+            Character::ALL.len() as u8,
+            Rules::default().rounds,
+            mode == PlayMode::FreePlay,
+        );
+        Self {
+            state,
+            devices: Vec::new(),
+        }
     }
 
-    fn taken(&self, character: Character, except: Seat) -> bool {
-        Seat::ALL.into_iter().any(|s| {
-            s != except && matches!(self.joined[s.index()], Some((_, c)) if c == character)
+    fn local_of(&self, device: Device) -> Option<u8> {
+        self.devices
+            .iter()
+            .position(|d| *d == device)
+            .map(|i| i as u8)
+    }
+
+    fn local_id(&mut self, device: Device) -> u8 {
+        self.local_of(device).unwrap_or_else(|| {
+            self.devices.push(device);
+            (self.devices.len() - 1) as u8
         })
     }
 
-    /// The next free character after `from` in `direction` (+1 or -1).
-    fn next_character(&self, seat: Seat, from: usize, direction: isize) -> Character {
-        let len = Character::ALL.len() as isize;
-        for k in 1..=len {
-            let index = (from as isize + direction * k).rem_euclid(len) as usize;
-            let character = Character::ALL[index];
-            if !self.taken(character, seat) {
-                return character;
-            }
-        }
-        Character::ALL[from]
-    }
-
-    /// Characters per seat: humans keep theirs, bots take whoever is left.
+    /// Characters per seat: players keep theirs, bots take whoever is left.
     fn roster(&self) -> Roster {
-        let mut roster = [Character::PaperLantern; MAX_PLAYERS];
-        let mut free: Vec<Character> = Character::ALL
-            .into_iter()
-            .filter(|c| !self.joined.iter().flatten().any(|(_, taken)| taken == c))
-            .collect();
-        for seat in Seat::ALL {
-            roster[seat.index()] = match self.joined[seat.index()] {
-                Some((_, character)) => character,
-                None => free.remove(0),
-            };
-        }
-        Roster(roster)
+        Roster(self.state.roster().map(|c| Character::ALL[c as usize]))
     }
 
+    /// Couch seats: every claim is this machine's, read from the device that made it.
     fn seats(&self) -> Seats {
         Seats(Seat::ALL.map(|seat| {
-            Some(match self.joined[seat.index()] {
-                Some((Device::Keyboard, _)) => Controller::Human {
-                    gamepad: Pad::None,
-                    keyboard: true,
+            Some(match self.state.seats[seat.index()] {
+                Some(claim) => match self.devices[claim.local as usize] {
+                    Device::Keyboard => Controller::Human {
+                        gamepad: Pad::None,
+                        keyboard: true,
+                    },
+                    Device::Pad(entity) => Controller::Human {
+                        gamepad: Pad::Bound(entity),
+                        keyboard: false,
+                    },
                 },
-                Some((Device::Pad(entity), _)) => Controller::Human {
-                    gamepad: Pad::Bound(entity),
-                    keyboard: false,
-                },
-                None => Controller::Bot(self.bots),
+                None => Controller::Bot(self.state.bots),
             })
         }))
     }
@@ -440,6 +477,7 @@ impl Lobby {
 #[derive(Component)]
 enum LobbyText {
     Slot(Seat),
+    Status,
     Settings,
 }
 
@@ -447,10 +485,17 @@ fn spawn_join(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mode: Res<PlayMode>,
     existing: Option<Res<Lobby>>,
+    online: Option<Res<Online>>,
 ) {
     // Coming back from the free-play picker keeps everyone joined; the title starts afresh.
-    let lobby = existing.map(|l| l.clone()).unwrap_or_default();
+    let mut lobby = existing
+        .map(|l| l.clone())
+        .unwrap_or_else(|| Lobby::new(*mode));
+    if let Some(state) = online.as_ref().and_then(|o| o.lobby()) {
+        lobby.state = state.clone();
+    }
     spawn_backdrop(
         &mut commands,
         &mut meshes,
@@ -464,6 +509,7 @@ fn spawn_join(
     commands.entity(column).with_children(|column| {
         column.spawn(line(tr!("join-title"), 52.0, CREAM));
         column.spawn(line(tr!("join-hint"), 20.0, DIM));
+        column.spawn((LobbyText::Status, line("", 18.0, DIM)));
     });
     commands
         .spawn((
@@ -505,78 +551,96 @@ fn join_lobby(
     nav: Res<DeviceNav>,
     mode: Res<PlayMode>,
     mut lobby: ResMut<Lobby>,
+    mut online: Option<ResMut<Online>>,
+    started: Option<Res<OnlineStart>>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
     sfx: Sfx,
 ) {
+    let Some(me) = online.as_ref().map_or(Some(PeerId::HOST), |o| o.me()) else {
+        return;
+    };
+    if started.is_some() {
+        return;
+    }
+    let host = me == PeerId::HOST;
+    let mut actions = Vec::new();
     let mut begin = false;
+    let mut leave = false;
     for (device, press) in nav.0.clone() {
-        match lobby.seat_of(device) {
+        let local = lobby.local_of(device);
+        match local.filter(|l| lobby.state.seat_of(me, *l).is_some()) {
             None => {
                 if press.confirm {
-                    // Take the first free seat, with the first character nobody has.
-                    if let Some(seat) = Seat::ALL
-                        .into_iter()
-                        .find(|s| lobby.joined[s.index()].is_none())
-                    {
-                        let character = lobby.next_character(seat, Character::ALL.len() - 1, 1);
-                        lobby.joined[seat.index()] = Some((device, character));
-                        sfx.play(Sound::Join);
-                    }
-                } else if press.back && lobby.joined.iter().all(Option::is_none) {
-                    sfx.play(Sound::Back);
-                    next_state.set(AppState::Title);
-                    return;
+                    actions.push(LobbyAction::Join {
+                        local: lobby.local_id(device),
+                    });
+                    sfx.play(Sound::Join);
+                } else if press.back && !lobby.state.peer_joined(me) {
+                    leave = true;
                 }
             }
-            Some(seat) => {
-                let (_, character) = lobby.joined[seat.index()].expect("joined");
-                let index = Character::ALL
-                    .iter()
-                    .position(|c| *c == character)
-                    .unwrap_or(0);
+            Some(local) => {
                 if press.left || press.right {
-                    let direction = if press.left { -1 } else { 1 };
-                    let picked = lobby.next_character(seat, index, direction);
-                    lobby.joined[seat.index()] = Some((device, picked));
+                    actions.push(LobbyAction::Pick {
+                        local,
+                        next: press.right,
+                    });
                     sfx.play(Sound::Move);
                 }
                 if press.back {
-                    lobby.joined[seat.index()] = None;
+                    actions.push(LobbyAction::Leave { local });
                     sfx.play(Sound::Back);
                 }
-                if press.extra || (*mode == PlayMode::Board && (press.up || press.down)) {
+                if host && press.extra {
+                    actions.push(LobbyAction::CycleBots);
                     sfx.play(Sound::Move);
                 }
-                if press.extra {
-                    lobby.bots = match lobby.bots {
-                        Difficulty::Easy => Difficulty::Normal,
-                        Difficulty::Normal => Difficulty::Hard,
-                        Difficulty::Hard => Difficulty::Easy,
-                    };
-                }
-                if *mode == PlayMode::Board && (press.up || press.down) {
-                    let at = ROUND_CHOICES
-                        .iter()
-                        .position(|r| *r == lobby.rounds)
-                        .unwrap_or(2);
-                    let at = step(at, ROUND_CHOICES.len(), press.down, press.up);
-                    lobby.rounds = ROUND_CHOICES[at];
+                if host && *mode == PlayMode::Board && (press.up || press.down) {
+                    actions.push(LobbyAction::Rounds { longer: press.up });
+                    sfx.play(Sound::Move);
                 }
                 begin |= press.start;
             }
         }
     }
-    if !begin {
+    for action in actions {
+        match online.as_mut() {
+            Some(online) => online.act(action),
+            None => {
+                lobby.state.apply(PeerId::HOST, action);
+            }
+        }
+    }
+    if let Some(state) = online.as_ref().and_then(|o| o.lobby()) {
+        lobby.state = state.clone();
+    }
+    if leave {
+        sfx.play(Sound::Back);
+        close_online(&mut commands);
+        next_state.set(AppState::Title);
+        return;
+    }
+    if !begin || !host {
         return;
     }
     sfx.play(Sound::Confirm);
+    if let Some(Online::Host(session)) = online.as_deref_mut() {
+        // The board protocol (next on the roadmap) takes the session from here.
+        let start = session.start(wall_clock_seed());
+        info!(
+            "online session started with {} other machines",
+            start.clients.len()
+        );
+        commands.insert_resource(OnlineStart(start));
+        return;
+    }
     commands.insert_resource(lobby.seats());
     commands.insert_resource(lobby.roster());
     match *mode {
         PlayMode::Board => {
             let rules = Rules {
-                rounds: lobby.rounds,
+                rounds: lobby.state.rounds,
                 ..Rules::default()
             };
             let game = Game::new(
@@ -593,6 +657,64 @@ fn join_lobby(
     }
 }
 
+/// Reads the online session every frame on the screens that have one, and acts on what
+/// happened: welcomed, refused, started, or the host gone.
+fn poll_online(
+    mut online: Option<ResMut<Online>>,
+    state: Res<State<AppState>>,
+    mut connect: Option<ResMut<ConnectScreen>>,
+    mut commands: Commands,
+    mut next_state: ResMut<NextState<AppState>>,
+    sfx: Sfx,
+) {
+    let Some(session) = online.as_deref_mut() else {
+        return;
+    };
+    for event in session.poll() {
+        match event {
+            OnlineEvent::Welcomed => {
+                if *state.get() == AppState::Connect {
+                    sfx.play(Sound::Confirm);
+                    commands.insert_resource(PlayMode::Board);
+                    next_state.set(AppState::Join);
+                }
+            }
+            OnlineEvent::Refused(refusal) => {
+                if let Some(connect) = connect.as_deref_mut() {
+                    connect.status = ConnectStatus::Failed(online::refusal_text(&refusal));
+                }
+                sfx.play(Sound::Back);
+                commands.remove_resource::<Online>();
+                return;
+            }
+            OnlineEvent::HostLeft => {
+                sfx.play(Sound::Back);
+                commands.remove_resource::<Online>();
+                commands.remove_resource::<OnlineStart>();
+                commands.insert_resource(Notice(tr!("notice-host-left")));
+                next_state.set(AppState::Title);
+                return;
+            }
+            OnlineEvent::Started(start) => {
+                sfx.play(Sound::Confirm);
+                info!("the host started the online session");
+                commands.insert_resource(OnlineStart(start));
+            }
+            OnlineEvent::PeerJoined => sfx.play(Sound::Join),
+            OnlineEvent::PeerLeft => sfx.play(Sound::Back),
+        }
+    }
+}
+
+/// Leaves the online session, if there is one, saying goodbye.
+fn close_online(commands: &mut Commands) {
+    commands.queue(|world: &mut World| {
+        if let Some(online) = world.remove_resource::<Online>() {
+            online.close();
+        }
+    });
+}
+
 fn difficulty_key(difficulty: Difficulty) -> &'static str {
     match difficulty {
         Difficulty::Easy => "difficulty-easy",
@@ -601,46 +723,97 @@ fn difficulty_key(difficulty: Difficulty) -> &'static str {
     }
 }
 
+/// The status line under the join screen's title: where friends can join a host, or which
+/// host this client is in.
+fn online_status(online: Option<&Online>, port: u16) -> String {
+    match online {
+        None => String::new(),
+        Some(Online::Host(_)) => {
+            let mut addresses = vec![tr!("join-hosting-here", port = port as u32)];
+            for (kind, ip) in online::reachable_addresses() {
+                let key = match kind {
+                    "tailscale" => "join-hosting-tailscale",
+                    _ => "join-hosting-lan",
+                };
+                addresses.push(tr!(key, address = ip.to_string(), port = port as u32));
+            }
+            tr!("join-hosting", addresses = addresses.join(",  "))
+        }
+        Some(Online::Client(client)) => {
+            tr!("join-connected", address = client.host().to_string())
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn show_lobby(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     lobby: Res<Lobby>,
     mode: Res<PlayMode>,
+    online: Option<Res<Online>>,
+    started: Option<Res<OnlineStart>>,
+    settings: Res<NetSettings>,
     mut texts: Query<(&LobbyText, &mut Text)>,
     folk: Query<(Entity, &MenuFolk, &Transform)>,
     mut shown: Local<Option<Roster>>,
+    mut status: Local<Option<String>>,
 ) {
+    let me = online.as_ref().and_then(|o| o.me()).unwrap_or(PeerId::HOST);
+    let host = me == PeerId::HOST;
+    let difficulty = tr!(difficulty_key(lobby.state.bots));
+    // Finding this machine's addresses asks the OS, so do it once per visit.
+    if status.is_none() || lobby.is_added() {
+        *status = Some(online_status(online.as_deref(), settings.port));
+    }
     for (label, mut text) in &mut texts {
         text.0 = match label {
-            LobbyText::Slot(seat) => match lobby.joined[seat.index()] {
-                Some((device, character)) => {
-                    let how = match device {
-                        Device::Keyboard => tr!("join-keyboard"),
-                        Device::Pad(_) => tr!("join-gamepad"),
+            LobbyText::Slot(seat) => match lobby.state.seats[seat.index()] {
+                Some(claim) => {
+                    let how = if claim.peer != me {
+                        tr!("join-online")
+                    } else {
+                        match lobby.devices.get(claim.local as usize) {
+                            Some(Device::Keyboard) => tr!("join-keyboard"),
+                            _ => tr!("join-gamepad"),
+                        }
                     };
+                    let character = Character::ALL[claim.character as usize];
                     format!("{}  ({how})\n< {} >", seat_label(*seat), character.name())
                 }
                 None => format!(
                     "{}\n{}",
                     seat_label(*seat),
-                    tr!("join-press-a", difficulty = tr!(difficulty_key(lobby.bots)))
+                    tr!("join-press-a", difficulty = difficulty.clone())
                 ),
             },
+            LobbyText::Status => status.clone().unwrap_or_default(),
             LobbyText::Settings => {
-                let rounds = match *mode {
-                    PlayMode::Board => tr!("join-rounds", rounds = lobby.rounds),
-                    PlayMode::FreePlay => String::new(),
-                };
-                let start = if lobby.joined.iter().any(Option::is_some) {
-                    tr!("join-start")
+                if started.is_some() {
+                    tr!("join-starting")
+                } else if !host {
+                    let settings = tr!(
+                        "join-host-settings",
+                        difficulty = difficulty.clone(),
+                        rounds = lobby.state.rounds
+                    );
+                    format!("{settings}\n{}", tr!("join-waiting-host"))
                 } else {
-                    String::new()
-                };
-                format!(
-                    "{}   {rounds}\n{start}",
-                    tr!("join-bots", difficulty = tr!(difficulty_key(lobby.bots)))
-                )
+                    let rounds = match *mode {
+                        PlayMode::Board => tr!("join-rounds", rounds = lobby.state.rounds),
+                        PlayMode::FreePlay => String::new(),
+                    };
+                    let start = if lobby.state.peer_joined(me) {
+                        tr!("join-start")
+                    } else {
+                        String::new()
+                    };
+                    format!(
+                        "{}   {rounds}\n{start}",
+                        tr!("join-bots", difficulty = difficulty.clone())
+                    )
+                }
             }
         };
     }
@@ -666,6 +839,262 @@ fn show_lobby(
         commands.entity(rebuilt.root).insert(MenuFolk(seat));
     }
     *shown = Some(roster);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Joining an online game: type the host's address, then wait to be let in.
+
+/// Characters the d-pad can dial in; the keyboard can type names too.
+const DIAL: &[u8] = b"0123456789.:";
+/// How long to wait for a host that doesn't answer at all.
+const CONNECT_TIMEOUT_SECS: f32 = 8.0;
+
+#[derive(Resource)]
+pub struct ConnectScreen {
+    address: String,
+    /// Where the next character goes (or which one the d-pad changes).
+    cursor: usize,
+    status: ConnectStatus,
+    connect_now: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum ConnectStatus {
+    Editing,
+    Connecting { since: f32, address: String },
+    Failed(String),
+}
+
+impl ConnectScreen {
+    pub fn new(address: String) -> Self {
+        Self {
+            cursor: address.len(),
+            address,
+            status: ConnectStatus::Editing,
+            connect_now: false,
+        }
+    }
+
+    /// Connects to `address` as soon as the screen opens (`--join`).
+    pub fn connecting(address: String) -> Self {
+        Self {
+            connect_now: true,
+            ..Self::new(address)
+        }
+    }
+
+    fn insert(&mut self, c: char) {
+        self.address.insert(self.cursor, c);
+        self.cursor += 1;
+    }
+
+    fn delete_before(&mut self) {
+        if self.cursor > 0 {
+            self.cursor -= 1;
+            self.address.remove(self.cursor);
+        }
+    }
+
+    /// The d-pad's up/down: turn the character at the cursor through [`DIAL`], or start a new
+    /// one at the end.
+    fn dial(&mut self, up: bool) {
+        if self.cursor == self.address.len() {
+            self.insert(if up { '0' } else { ':' });
+            self.cursor -= 1;
+            return;
+        }
+        let current = self.address.as_bytes()[self.cursor];
+        let at = DIAL.iter().position(|c| *c == current).unwrap_or(0);
+        let len = DIAL.len();
+        let next = if up {
+            (at + 1) % len
+        } else {
+            (at + len - 1) % len
+        };
+        self.address
+            .replace_range(self.cursor..=self.cursor, &(DIAL[next] as char).to_string());
+    }
+
+    fn delete_at(&mut self) {
+        if self.cursor < self.address.len() {
+            self.address.remove(self.cursor);
+        } else {
+            self.delete_before();
+        }
+    }
+}
+
+#[derive(Component)]
+enum ConnectText {
+    Field,
+    Status,
+}
+
+fn spawn_connect(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    screen: Option<Res<ConnectScreen>>,
+) {
+    if screen.is_none() {
+        commands.insert_resource(ConnectScreen::new("127.0.0.1".into()));
+    }
+    spawn_backdrop(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        AppState::Connect,
+        &Roster::default(),
+        &[],
+    );
+    let column = text_column(&mut commands, AppState::Connect, 60.0);
+    commands.entity(column).with_children(|column| {
+        column.spawn(line(tr!("connect-title"), 52.0, CREAM));
+        column.spawn(line(tr!("connect-hint"), 20.0, DIM));
+        column.spawn((ConnectText::Field, line("", 32.0, CREAM)));
+        column.spawn(line(tr!("connect-actions"), 18.0, DIM));
+        column.spawn((ConnectText::Status, line("", 22.0, CREAM)));
+    });
+}
+
+#[allow(clippy::too_many_arguments)]
+fn connect_screen(
+    time: Res<Time>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut typed: MessageReader<KeyboardInput>,
+    nav: Res<DeviceNav>,
+    mut screen: ResMut<ConnectScreen>,
+    online: Option<Res<Online>>,
+    mut text: Query<(&ConnectText, &mut Text)>,
+    mut commands: Commands,
+    mut next_state: ResMut<NextState<AppState>>,
+    sfx: Sfx,
+) {
+    let now = time.elapsed_secs();
+    let pads = nav
+        .0
+        .iter()
+        .filter(|(d, _)| matches!(d, Device::Pad(_)))
+        .map(|(_, n)| *n);
+    let mut pad = Nav::default();
+    for n in pads {
+        pad.confirm |= n.confirm;
+        pad.back |= n.back;
+        pad.extra |= n.extra;
+        pad.up |= n.up;
+        pad.down |= n.down;
+        pad.left |= n.left;
+        pad.right |= n.right;
+    }
+    let connecting = matches!(screen.status, ConnectStatus::Connecting { .. });
+    let back = pad.back || keys.just_pressed(KeyCode::Escape);
+    let connect =
+        pad.confirm || keys.just_pressed(KeyCode::Enter) || std::mem::take(&mut screen.connect_now);
+
+    if back {
+        sfx.play(Sound::Back);
+        if online.is_some() {
+            close_online(&mut commands);
+        }
+        if connecting {
+            screen.status = ConnectStatus::Editing;
+        } else {
+            next_state.set(AppState::Title);
+        }
+        return;
+    }
+
+    if !connecting {
+        let mut edited = false;
+        for key in typed.read() {
+            if key.state != ButtonState::Pressed {
+                continue;
+            }
+            match (&key.logical_key, &key.text) {
+                (Key::Backspace, _) => screen.delete_before(),
+                (Key::Delete, _) => screen.delete_at(),
+                (Key::ArrowLeft, _) => screen.cursor = screen.cursor.saturating_sub(1),
+                (Key::ArrowRight, _) => {
+                    screen.cursor = (screen.cursor + 1).min(screen.address.len())
+                }
+                (_, Some(text)) => {
+                    for c in text
+                        .chars()
+                        .filter(|c| c.is_ascii_alphanumeric() || ".:-".contains(*c))
+                    {
+                        screen.insert(c);
+                    }
+                }
+                _ => continue,
+            }
+            edited = true;
+        }
+        if pad.left {
+            screen.cursor = screen.cursor.saturating_sub(1);
+        }
+        if pad.right {
+            screen.cursor = (screen.cursor + 1).min(screen.address.len());
+        }
+        if pad.up || pad.down {
+            screen.dial(pad.up);
+        }
+        if pad.extra {
+            screen.delete_at();
+        }
+        if edited || pad.left || pad.right || pad.up || pad.down || pad.extra {
+            sfx.play(Sound::Move);
+            screen.status = ConnectStatus::Editing;
+        }
+        if connect {
+            match online::parse_address(&screen.address).and_then(|addr| {
+                Online::join(addr)
+                    .map(|online| (addr, online))
+                    .map_err(|e| tr!("connect-socket-error", error = e.to_string()))
+            }) {
+                Ok((addr, online)) => {
+                    sfx.play(Sound::Confirm);
+                    commands.insert_resource(online);
+                    screen.status = ConnectStatus::Connecting {
+                        since: now,
+                        address: addr.to_string(),
+                    };
+                }
+                Err(message) => {
+                    sfx.play(Sound::Back);
+                    screen.status = ConnectStatus::Failed(message);
+                }
+            }
+        }
+    } else {
+        typed.clear();
+    }
+
+    if let ConnectStatus::Connecting { since, address } = &screen.status
+        && now - since > CONNECT_TIMEOUT_SECS
+    {
+        let message = tr!("connect-no-answer", address = address.clone());
+        sfx.play(Sound::Back);
+        close_online(&mut commands);
+        screen.status = ConnectStatus::Failed(message);
+    }
+
+    let mut field = screen.address.clone();
+    if !connecting {
+        field.insert(screen.cursor, '|');
+    }
+    let status = match &screen.status {
+        ConnectStatus::Editing => String::new(),
+        ConnectStatus::Connecting { address, .. } => {
+            tr!("connect-connecting", address = address.clone())
+        }
+        ConnectStatus::Failed(message) => message.clone(),
+    };
+    for (part, mut text) in &mut text {
+        text.0 = match part {
+            ConnectText::Field => field.clone(),
+            ConnectText::Status => status.clone(),
+        };
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -879,38 +1308,61 @@ fn results_screen(
 mod tests {
     use super::*;
 
-    #[test]
-    fn humans_keep_their_characters_and_bots_take_the_rest() {
-        let mut lobby = Lobby::default();
-        lobby.joined[0] = Some((Device::Keyboard, Character::NeonRing));
-        lobby.joined[2] = Some((Device::Pad(Entity::PLACEHOLDER), Character::PaperLantern));
-        let roster = lobby.roster();
-        assert_eq!(roster.of(Seat(0)), Character::NeonRing);
-        assert_eq!(roster.of(Seat(2)), Character::PaperLantern);
-        let mut all: Vec<_> = roster.0.to_vec();
-        all.sort_by_key(|c| Character::ALL.iter().position(|x| x == c));
-        assert_eq!(all, Character::ALL.to_vec(), "every character exactly once");
+    fn join(lobby: &mut Lobby, device: Device) {
+        let local = lobby.local_id(device);
+        lobby.state.apply(PeerId::HOST, LobbyAction::Join { local });
     }
 
     #[test]
-    fn picking_skips_characters_someone_else_has() {
-        let mut lobby = Lobby::default();
-        lobby.joined[0] = Some((Device::Keyboard, Character::PaperLantern));
-        lobby.joined[1] = Some((Device::Pad(Entity::PLACEHOLDER), Character::FireflyJar));
-        // Seat 0 moving right from Paper Lantern skips seat 1's Firefly Jar.
-        assert_eq!(lobby.next_character(Seat(0), 0, 1), Character::Candle);
-        assert_eq!(lobby.next_character(Seat(0), 0, -1), Character::NeonRing);
+    fn devices_keep_their_seats_and_characters() {
+        let mut lobby = Lobby::new(PlayMode::Board);
+        let pad = Device::Pad(Entity::PLACEHOLDER);
+        join(&mut lobby, pad);
+        join(&mut lobby, Device::Keyboard);
+        let local = lobby.local_of(Device::Keyboard).unwrap();
+        lobby
+            .state
+            .apply(PeerId::HOST, LobbyAction::Pick { local, next: false });
+        let roster = lobby.roster();
+        assert_eq!(roster.of(Seat(0)), Character::PaperLantern);
+        assert_eq!(roster.of(Seat(1)), Character::NeonRing);
+        let seats = lobby.seats();
+        assert_eq!(
+            seats.0[0],
+            Some(Controller::Human {
+                gamepad: Pad::Bound(Entity::PLACEHOLDER),
+                keyboard: false
+            })
+        );
+        assert!(seats.is_human(Seat(1)));
     }
 
     #[test]
     fn unjoined_seats_become_bots() {
-        let mut lobby = Lobby {
-            bots: Difficulty::Hard,
-            ..Lobby::default()
-        };
-        lobby.joined[1] = Some((Device::Keyboard, Character::Candle));
+        let mut lobby = Lobby::new(PlayMode::Board);
+        lobby.state.bots = Difficulty::Hard;
+        join(&mut lobby, Device::Keyboard);
         let seats = lobby.seats();
-        assert!(seats.is_human(Seat(1)));
-        assert_eq!(seats.0[0], Some(Controller::Bot(Difficulty::Hard)));
+        assert!(seats.is_human(Seat(0)));
+        assert_eq!(seats.0[1], Some(Controller::Bot(Difficulty::Hard)));
+    }
+
+    #[test]
+    fn the_address_dial_turns_digits_and_appends() {
+        let mut screen = ConnectScreen::new("10.0".into());
+        screen.dial(true);
+        assert_eq!(screen.address, "10.00");
+        screen.cursor = 0;
+        screen.dial(false);
+        assert_eq!(screen.address, "00.00");
+        screen.dial(false);
+        assert_eq!(
+            screen.address, ":0.00",
+            "down from 0 wraps to the last character"
+        );
+        screen.dial(true);
+        assert_eq!(screen.address, "00.00");
+        screen.delete_at();
+        assert_eq!(screen.address, "0.00");
     }
 }

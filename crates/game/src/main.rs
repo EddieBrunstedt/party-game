@@ -9,6 +9,7 @@ mod intro;
 mod lantern_push;
 mod menus;
 mod minigames;
+mod online;
 mod palette;
 mod particles;
 mod perf;
@@ -81,6 +82,15 @@ struct Cli {
     /// Log every gamepad button press (diagnoses controller mappings).
     #[arg(long)]
     log_input: bool,
+    /// Skip the title and host an online board game (friends join with `--join`).
+    #[arg(long)]
+    host: bool,
+    /// Skip the title and join the online game hosted at this address, e.g. 127.0.0.1:7777.
+    #[arg(long, value_name = "ADDRESS")]
+    join: Option<String>,
+    /// The port to host on.
+    #[arg(long, default_value_t = online::DEFAULT_PORT)]
+    port: u16,
     /// Write every sound effect to this directory as WAVs, then exit.
     #[arg(long, value_name = "DIR")]
     dump_sfx: Option<PathBuf>,
@@ -204,6 +214,7 @@ fn main() {
     )
     .insert_resource(Time::<Fixed>::from_hz(TICK_HZ as f64))
     .insert_resource(Seats(seats))
+    .insert_resource(online::NetSettings { port: cli.port })
     .init_resource::<characters::Roster>()
     .add_plugins((
         perf::PerfOverlayPlugin {
@@ -251,6 +262,23 @@ fn main() {
             );
             app.insert_resource(board_view::BoardSession::new(game))
                 .insert_state(AppState::Board);
+        }
+        None if cli.host => match menus::host_online(cli.port) {
+            Ok(online) => {
+                app.insert_resource(Seats([None; 4]))
+                    .insert_resource(online)
+                    .insert_state(AppState::Join);
+            }
+            Err(notice) => {
+                eprintln!("{}", notice.0);
+                std::process::exit(1);
+            }
+        },
+        None if cli.join.is_some() => {
+            let address = cli.join.clone().unwrap_or_default();
+            app.insert_resource(Seats([None; 4]))
+                .insert_resource(menus::ConnectScreen::connecting(address))
+                .insert_state(AppState::Connect);
         }
         // The real start: title, then the join screen binds controllers to seats.
         None => {

@@ -11,6 +11,7 @@ minigame-lantern-push.workspace = true
 minigame-firefly-catch.workspace = true
 minigame-registry.workspace = true
 sim-board.workspace = true
+net.workspace = true
 bevy.workspace = true
 bevy_hanabi.workspace = true
 bevy_kira_audio.workspace = true

@@ -32,6 +32,8 @@ pub(crate) enum Frame {
         next: u32,
         beyond: u32,
     },
+    /// The sender is closing the connection.
+    Bye,
 }
 
 /// Why a peer turned down a connection.

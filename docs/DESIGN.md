@@ -59,7 +59,8 @@ Items, shops, event spaces, bonus stars, last-5-turns events, **duels (1v1, need
 
 - **One controller per player.** The game is designed for gamepads; keyboard input is for development only.
 - **Joining:** on the join screen, each controller that presses A takes the next seat and stays bound to it. Left/right picks a character (each character once), B leaves, X cycles the bots' difficulty, up/down sets the board length, and Start begins. Online, each machine joins its local controllers the same way.
-- **Screens:** title (board game / free play / quit) → join → board ↔ minigames → results → title. Free play goes join → minigame picker → minigame, and B after a result returns to the picker.
+- **Screens:** title (board game / free play / host online / join online / quit) → join → board ↔ minigames → results → title. Free play goes join → minigame picker → minigame, and B after a result returns to the picker. Join online goes through a connect screen (type or d-pad-dial the host's address) to the same join screen.
+- **Online joining:** the join screen's rules are `net::lobby` on every machine; on the couch this machine is simply the host. Online, the host's lobby is the real one: each machine numbers its own controllers, sends what they press, and shows the lobby the host sends back. Only the host's players change bots and rounds and press Start. The host's join screen lists the addresses friends can join at (this PC, LAN, Tailscale).
 - **Every minigame starts the same way** (`game/src/intro.rs`): an instruction card (title, format, goal, how to play, controls) that waits until every human has pressed A, then a 3-2-1 countdown of `sim_core::COUNTDOWN_TICKS` in which nobody can act. The simulation doesn't tick while the card is up. A minigame only supplies Fluent keys (`{id}-title`, `-goal`, `-how`, `-a`, and optionally `-b`, `-stick`, `-goal-teams`, `-goal-solo`); a test checks the required ones. "Play again" in free play skips the card. Online, readiness will travel as a board-protocol message.
 - **Bots** fill empty seats, set by the host, with 2–3 difficulty levels. A bot is a **virtual controller**: a pure function `bot_input(state, seat, difficulty) -> Input` whose output is sent exactly like a human's. The simulation never knows a seat is a bot.
 - **Controller disconnects** are local events and never break the network session. The setting "Pause when a controller disconnects" defaults to **Off**:
@@ -92,10 +93,11 @@ crates/
   minigames/*   # no Bevy. One crate per minigame: State: Clone + Hash, step(), bot_input()
   registry/     # no Bevy. minigame-registry: the list of every minigame, looked up by id
   net/          # no Bevy. Transport (UDP, in-memory, fault injection), Endpoint (handshake, reliable
-                #   channel, ggrs socket), rollback driver, online check; later the board protocol
+                #   channel, ggrs socket), rollback driver, online check, lobby rules, session
+                #   (host/client); later the board protocol
   game/         # Bevy 0.20: rendering, interpolation, UI, audio, input, menus.
                 #   flow.rs (screen states), runner.rs (input + minigame driver), board_view.rs,
-                #   menus.rs, intro.rs (instruction card), one view module per minigame,
+                #   menus.rs, online.rs (hosting/joining), intro.rs (instruction card), one view module per minigame,
                 #   characters.rs, particles.rs, audio.rs + sfx.rs, quality.rs, i18n.rs
   tools/        # headless CLI: `check` (all quality bars), `net-check` (online bar over localhost UDP),
                 #   `bots` (bot-only matches), `board` (bot-only board games)
@@ -140,7 +142,7 @@ Determinism rules for simulation code:
 
 ### 4.4 Online ([ADR 0004](adr/0004-transport-layer.md))
 
-- **Friends only**, by invite or code. No public matchmaking.
+- **Friends only**, by invite or code. No public matchmaking. Before Steam: the host picks "Host online" (UDP port 7777) and friends type its address under "Join online".
 - **Our own transport layer.** Plain UDP comes first: localhost for development, and direct IP over Tailscale or ZeroTier for playing with friends before Steam. A Steam backend (lobbies and invites, SteamNetworkingMessages via a small ggrs `NonBlockingSocket` adapter) slots in behind the same layer if the game ships on Steam.
 - **Endpoints** (`net`): each machine has one `Endpoint` over one transport and port. It handshakes (protocol and game version must match exactly, or the peer is refused with the reason), carries reliable ordered messages for the board phase (our own fragment, ack and resend layer), and hands `ggrs` a socket for minigames. Minigames need a full mesh (every machine reaches every other); the board phase only needs everyone to reach the host.
 - **Network disconnects:**

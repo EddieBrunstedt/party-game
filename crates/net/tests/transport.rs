@@ -55,14 +55,14 @@ fn exchange<T: Transport>(
             match event {
                 NetEvent::Connected(addr) => client_addr = Some(addr),
                 NetEvent::Message(_, bytes) => host_got.push(bytes),
-                NetEvent::Refused(..) => panic!("the host was refused"),
+                NetEvent::Refused(..) | NetEvent::Disconnected(_) => panic!("unexpected {event:?}"),
             }
         }
         for event in client.poll() {
             match event {
                 NetEvent::Connected(_) => {}
                 NetEvent::Message(_, bytes) => client_got.push(bytes),
-                NetEvent::Refused(_, why) => panic!("refused: {why:?}"),
+                NetEvent::Refused(..) | NetEvent::Disconnected(_) => panic!("unexpected {event:?}"),
             }
         }
         if let Some(client_addr) = client_addr.filter(|_| !sent) {
@@ -393,4 +393,20 @@ fn ggrs_sessions_sync_and_exchange_inputs() {
         }
         std::thread::sleep(Duration::from_millis(1));
     }
+}
+
+#[test]
+fn a_goodbye_disconnects_the_other_side() {
+    let clock = Clock::manual();
+    let [host, client] = memory_pair(Faults::default(), 1, &clock);
+    client.connect(MemoryAddr(1));
+    assert!(wait_for(&[&host, &client], &clock, |i, event| {
+        i == 0 && matches!(event, NetEvent::Connected(_))
+    }));
+    client.disconnect(MemoryAddr(1));
+    assert!(wait_for(&[&host, &client], &clock, |i, event| {
+        i == 0 && *event == NetEvent::Disconnected(MemoryAddr(2))
+    }));
+    assert!(host.connected_peers().is_empty());
+    assert!(client.send(MemoryAddr(1), b"gone").is_err());
 }

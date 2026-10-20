@@ -1,10 +1,12 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
+use serde::{Deserialize, Serialize};
+
 use crate::Transport;
 
 /// An address on a [`MemoryNetwork`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct MemoryAddr(pub u16);
 
 type Mailboxes = BTreeMap<MemoryAddr, VecDeque<(MemoryAddr, Vec<u8>)>>;

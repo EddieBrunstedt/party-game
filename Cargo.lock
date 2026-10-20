@@ -3015,6 +3015,7 @@ dependencies = [
  "minigame-lantern-push",
  "minigame-quick-draw",
  "minigame-registry",
+ "net",
  "sim-board",
  "sim-core",
 ]

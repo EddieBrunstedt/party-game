@@ -83,3 +83,12 @@ impl<T: Transport> Transport for Faulty<T> {
         self.inner.receive(into);
     }
 }
+
+/// Sends what is still held back, so a goodbye sent just before closing isn't lost.
+impl<T: Transport> Drop for Faulty<T> {
+    fn drop(&mut self) {
+        for (_, (to, datagram)) in std::mem::take(&mut self.pending) {
+            self.inner.send(to, &datagram);
+        }
+    }
+}
