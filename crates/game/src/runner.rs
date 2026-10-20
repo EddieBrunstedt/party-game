@@ -1,17 +1,22 @@
 //! Drives any [`Minigame`] at the fixed tick rate: gathers each seat's input (devices or bot),
-//! steps the simulation, and restarts it when a finished game is acknowledged.
-//! Couch play only for now; online play will feed the same `Run` through `ggrs`.
+//! steps the simulation, and when it ends either restarts it (free play) or hands the result
+//! back to the board. Couch play only for now; online play will feed the same `Run` through `ggrs`.
 
 use std::marker::PhantomData;
 
 use bevy::input::gamepad::{Gamepad, GamepadButton, GamepadConnection, GamepadConnectionEvent};
 use bevy::prelude::*;
 use sim_core::{
-    Button, Difficulty, Format, Input, MAX_PLAYERS, Minigame, PlayerSetup, Run, RunConfig, Seat,
+    Button, Difficulty, Format, Input, Inputs, MAX_PLAYERS, Minigame, PlayerSetup, Run, RunConfig,
+    Seat,
 };
 
-/// How long a finished game stays on screen before A restarts it.
+use crate::flow::{AppState, MinigameLaunch, MinigameResult, Origin};
+
+/// How long a finished game stays on screen before A continues.
 const RESTART_DELAY_TICKS: u32 = 90;
+/// With no humans in the game, nobody presses A: carry on by itself after this long.
+const AUTO_CONTINUE_TICKS: u32 = 240;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Controller {
@@ -31,6 +36,10 @@ impl Seats {
     pub fn is_bot(&self, seat: Seat) -> bool {
         matches!(self.0[seat.index()], Some(Controller::Bot(_)))
     }
+
+    pub fn is_human(&self, seat: Seat) -> bool {
+        matches!(self.0[seat.index()], Some(Controller::Human { .. }))
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -41,6 +50,7 @@ pub struct RunSetup {
     pub config: RunConfig,
 }
 
+/// Exists only while this minigame is on screen.
 #[derive(Resource)]
 pub struct ActiveRun<M: Minigame> {
     pub run: Run<M>,
@@ -48,18 +58,20 @@ pub struct ActiveRun<M: Minigame> {
     /// [`Time<Fixed>::overstep_fraction`] so motion is smooth at any frame rate.
     pub previous: M::State,
     setup: RunSetup,
+    pub origin: Origin,
     /// Bumped on every restart so views can reset their presentation state.
     pub generation: u32,
     finished_ticks: u32,
 }
 
 impl<M: Minigame> ActiveRun<M> {
-    fn new(setup: RunSetup) -> Self {
+    fn new(setup: RunSetup, origin: Origin) -> Self {
         let run = Run::<M>::new(setup.seed, setup.players, setup.format, setup.config);
         Self {
             previous: run.game.clone(),
             run,
             setup,
+            origin,
             generation: 0,
             finished_ticks: 0,
         }
@@ -68,40 +80,120 @@ impl<M: Minigame> ActiveRun<M> {
     fn restart(&mut self) {
         self.setup.seed = self.setup.seed.wrapping_add(1);
         let generation = self.generation + 1;
-        *self = Self::new(self.setup);
+        *self = Self::new(self.setup, self.origin);
         self.generation = generation;
     }
 
     pub fn can_restart(&self) -> bool {
         self.finished_ticks >= RESTART_DELAY_TICKS
     }
-}
 
-/// Button presses seen between fixed ticks, so taps shorter than a tick are never lost.
-#[derive(Resource, Default)]
-struct PressLatch([u8; MAX_PLAYERS]);
-
-pub struct MinigamePlugin<M> {
-    setup: RunSetup,
-    _minigame: PhantomData<fn() -> M>,
-}
-
-impl<M> MinigamePlugin<M> {
-    pub fn new(setup: RunSetup) -> Self {
-        Self {
-            setup,
-            _minigame: PhantomData,
+    /// What pressing A does once the game is over, or nothing while it's too soon to press.
+    pub fn continue_prompt(&self) -> &'static str {
+        match (self.can_restart(), self.origin) {
+            (false, _) => "",
+            (true, Origin::FreePlay) => "Press A to play again",
+            (true, Origin::Board) => "Press A to continue",
         }
     }
 }
 
+/// Button presses seen between fixed ticks, so taps shorter than a tick are never lost.
+#[derive(Resource, Default)]
+pub struct PressLatch(pub [u8; MAX_PLAYERS]);
+
+/// Ordering for systems that run on entering [`AppState::Minigame`]: views spawn their scene
+/// after [`MinigameSet::Start`] has created the [`ActiveRun`].
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum MinigameSet {
+    Start,
+}
+
+/// Runs minigame `M` whenever a [`MinigameLaunch`] names it.
+pub struct MinigamePlugin<M>(PhantomData<fn() -> M>);
+
+impl<M> Default for MinigamePlugin<M> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+/// Input plumbing shared by every minigame (and the board).
+pub struct InputPlugin;
+
+impl Plugin for InputPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<PressLatch>()
+            .init_resource::<SeatInputs>()
+            .add_systems(PreUpdate, read_seat_inputs.after(bevy::input::InputSystems))
+            .add_systems(Update, (log_gamepad_connections, latch_presses));
+    }
+}
+
+/// Every human seat's input this frame and last frame, for turn-based screens (the board,
+/// menus) that run per frame rather than per tick. Bot and empty seats read as neutral.
+#[derive(Resource, Default)]
+pub struct SeatInputs(pub Inputs);
+
+impl SeatInputs {
+    pub fn just_pressed(&self, seat: Seat, button: Button) -> bool {
+        self.0.just_pressed(seat, button)
+    }
+
+    /// The seat's stick, or `None` while it's near the centre.
+    pub fn stick(&self, seat: Seat) -> Option<Vec2> {
+        let input = self.0.current[seat.index()];
+        let v = Vec2::new(input.stick_x as f32, input.stick_y as f32) / 127.0;
+        (v.length() > 0.5).then_some(v)
+    }
+
+    /// True on the frame the stick leaves the centre.
+    pub fn stick_flicked(&self, seat: Seat) -> bool {
+        let before = self.0.previous[seat.index()];
+        let was_centred = (before.stick_x as f32).hypot(before.stick_y as f32) <= 0.5 * 127.0;
+        was_centred && self.stick(seat).is_some()
+    }
+}
+
+fn read_seat_inputs(
+    seats: Res<Seats>,
+    keys: Res<ButtonInput<KeyCode>>,
+    gamepads: Query<(Entity, &Gamepad)>,
+    mut inputs: ResMut<SeatInputs>,
+) {
+    let pads = connected_gamepads(&gamepads);
+    let previous = inputs.0.current;
+    let current = std::array::from_fn(|i| match seats.0[i] {
+        Some(Controller::Human { gamepad, keyboard }) => {
+            human_input(keyboard, pads.get(gamepad).copied(), &keys, 0)
+        }
+        _ => Input::default(),
+    });
+    inputs.0 = Inputs { current, previous };
+}
+
 impl<M: Minigame> Plugin for MinigamePlugin<M> {
     fn build(&self, app: &mut App) {
-        app.insert_resource(ActiveRun::<M>::new(self.setup))
-            .init_resource::<PressLatch>()
-            .add_systems(Update, (log_gamepad_connections, latch_presses))
-            .add_systems(FixedUpdate, step_run::<M>);
+        app.add_systems(
+            OnEnter(AppState::Minigame),
+            start_run::<M>.in_set(MinigameSet::Start),
+        )
+        .add_systems(OnExit(AppState::Minigame), stop_run::<M>)
+        .add_systems(
+            FixedUpdate,
+            step_run::<M>.run_if(resource_exists::<ActiveRun<M>>),
+        );
     }
+}
+
+fn start_run<M: Minigame>(mut commands: Commands, launch: Option<Res<MinigameLaunch>>) {
+    if let Some(launch) = launch.filter(|l| l.id == M::ID) {
+        commands.insert_resource(ActiveRun::<M>::new(launch.setup, launch.origin));
+    }
+}
+
+fn stop_run<M: Minigame>(mut commands: Commands) {
+    commands.remove_resource::<ActiveRun<M>>();
 }
 
 const KEYBOARD_BUTTONS: [(KeyCode, Button); 6] = [
@@ -222,24 +314,35 @@ fn human_input(
 }
 
 fn step_run<M: Minigame>(
+    mut commands: Commands,
     mut active: ResMut<ActiveRun<M>>,
     seats: Res<Seats>,
     keys: Res<ButtonInput<KeyCode>>,
     gamepads: Query<(Entity, &Gamepad)>,
     mut latch: ResMut<PressLatch>,
+    mut next_state: ResMut<NextState<AppState>>,
 ) {
     let pads = connected_gamepads(&gamepads);
     let latched = std::mem::take(&mut latch.0);
 
-    if active.run.outcome().is_some() {
+    if let Some(outcome) = active.run.outcome() {
         active.previous = active.run.game.clone();
         active.finished_ticks += 1;
         let human_pressed_a = Seat::ALL.into_iter().any(|seat| {
-            !seats.is_bot(seat)
+            seats.is_human(seat)
                 && latched[seat.index()] & Input::default().with(Button::A).buttons != 0
         });
-        if active.can_restart() && human_pressed_a {
-            active.restart();
+        let no_humans = Seat::ALL.into_iter().all(|seat| !seats.is_human(seat));
+        let carry_on = (active.can_restart() && human_pressed_a)
+            || (no_humans && active.finished_ticks >= AUTO_CONTINUE_TICKS);
+        if carry_on {
+            match active.origin {
+                Origin::FreePlay => active.restart(),
+                Origin::Board => {
+                    commands.insert_resource(MinigameResult(outcome));
+                    next_state.set(AppState::Board);
+                }
+            }
         }
         return;
     }

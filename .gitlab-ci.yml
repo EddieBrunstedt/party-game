@@ -1,0 +1,36 @@
+# Every push: the workspace tests (which include each minigame's `check_all` quality bars)
+# and clippy with warnings as errors. One job, so both share a single compile of Bevy.
+
+default:
+  # bevy_hanabi's git main needs Rust 1.97 or newer.
+  image: rust:1.99-bookworm
+
+variables:
+  CARGO_HOME: $CI_PROJECT_DIR/.cargo-home
+  CARGO_TERM_COLOR: always
+  # No assets are needed to build or test; don't pull LFS objects.
+  GIT_LFS_SKIP_SMUDGE: "1"
+
+stages:
+  - check
+
+check:
+  stage: check
+  cache:
+    key:
+      files:
+        - Cargo.lock
+    paths:
+      - .cargo-home/registry/
+      - .cargo-home/git/
+      - target/
+  before_script:
+    # Native libraries Bevy links against on Linux (audio, gamepads, windowing).
+    - apt-get update -qq
+    - apt-get install -y -qq --no-install-recommends
+      pkg-config libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+    - rustup component add clippy
+    - rustc --version && cargo --version
+  script:
+    - cargo test --workspace --locked
+    - cargo clippy --workspace --all-targets --locked -- -D warnings

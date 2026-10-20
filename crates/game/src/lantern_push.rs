@@ -11,33 +11,34 @@ use minigame_lantern_push::{
 use sim_core::physics::Vec2 as SimVec2;
 use sim_core::{Format, Seat, TICK_HZ};
 
+use crate::flow::AppState;
 use crate::palette::{LANTERN_WARM, MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
-use crate::runner::{ActiveRun, Seats};
+use crate::runner::{ActiveRun, MinigameSet, Seats};
 use crate::scenery::{emissive_material, night_camera, noise, spawn_fireflies, spawn_lantern_folk};
 
 pub struct LanternPushViewPlugin;
 
 impl Plugin for LanternPushViewPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(ClearColor(NIGHT_SKY))
-            .insert_resource(GlobalAmbientLight {
-                color: MOONLIGHT,
-                brightness: 40.0,
-                ..default()
-            })
-            .add_systems(Startup, (spawn_scene, spawn_hud))
-            .add_systems(
-                Update,
-                (
-                    animate_platform,
-                    crumble_edge,
-                    animate_debris,
-                    animate_fighters,
-                    animate_sky_lanterns,
-                    (fit_camera, shake_camera).chain(),
-                    update_hud,
-                ),
-            );
+        app.add_systems(
+            OnEnter(AppState::Minigame),
+            (spawn_scene, spawn_hud)
+                .after(MinigameSet::Start)
+                .run_if(resource_exists::<ActiveRun<LanternPush>>),
+        )
+        .add_systems(
+            Update,
+            (
+                animate_platform,
+                crumble_edge,
+                animate_debris,
+                animate_fighters,
+                animate_sky_lanterns,
+                (fit_camera, shake_camera).chain(),
+                update_hud,
+            )
+                .run_if(resource_exists::<ActiveRun<LanternPush>>),
+        );
     }
 }
 
@@ -110,12 +111,20 @@ fn spawn_scene(
     mut materials: ResMut<Assets<StandardMaterial>>,
     active: Res<ActiveRun<LanternPush>>,
 ) {
+    commands.insert_resource(ClearColor(NIGHT_SKY));
+    commands.insert_resource(GlobalAmbientLight {
+        color: MOONLIGHT,
+        brightness: 40.0,
+        ..default()
+    });
     let camera = camera_transform(1.0);
     commands.spawn((
+        DespawnOnExit(AppState::Minigame),
         night_camera(camera, (18.0, 46.0)),
         CameraRig { base: camera },
     ));
     commands.spawn((
+        DespawnOnExit(AppState::Minigame),
         DirectionalLight {
             color: MOONLIGHT,
             illuminance: 450.0,
@@ -126,6 +135,7 @@ fn spawn_scene(
     ));
     // A warm lantern hanging over the middle, so the arena reads as the brightest thing on screen.
     commands.spawn((
+        DespawnOnExit(AppState::Minigame),
         PointLight {
             color: Color::from(LANTERN_WARM),
             intensity: 2_500_000.0,
@@ -142,6 +152,7 @@ fn spawn_scene(
         &mut commands,
         &mut meshes,
         &mut materials,
+        AppState::Minigame,
         FIREFLY_COUNT,
         Vec3::new(-11.0, -2.0, -9.0),
         Vec3::new(11.0, 4.0, 7.0),
@@ -160,6 +171,7 @@ fn spawn_platform(
 ) {
     // The disc is scaled to the simulated radius every frame, so its edge is the real edge.
     commands.spawn((
+        DespawnOnExit(AppState::Minigame),
         ScalesWithRadius,
         Mesh3d(meshes.add(Cylinder::new(1.0, PLATFORM_DEPTH).mesh().resolution(64))),
         MeshMaterial3d(materials.add(StandardMaterial {
@@ -175,6 +187,7 @@ fn spawn_platform(
     ));
     let ring_material = materials.add(emissive_material(LANTERN_WARM, 4.0));
     commands.spawn((
+        DespawnOnExit(AppState::Minigame),
         ScalesWithRadius,
         EdgeRing {
             material: ring_material.clone(),
@@ -209,6 +222,7 @@ fn spawn_platform(
             }
             let home = Vec3::new(centre.x, -0.03 + noise(i, j, 3) * 0.04, centre.y);
             commands.spawn((
+                DespawnOnExit(AppState::Minigame),
                 Tile {
                     reach,
                     home,
@@ -247,6 +261,7 @@ fn spawn_sky_lanterns(
         );
         let color = colors[k as usize % colors.len()];
         commands.spawn((
+            DespawnOnExit(AppState::Minigame),
             SkyLantern {
                 origin,
                 phase: noise(k, 0, 23) * TAU,
@@ -287,6 +302,7 @@ fn spawn_fighter(
         commands,
         meshes,
         materials,
+        AppState::Minigame,
         seat,
         Transform::from_translation(world(fighter.body.pos)).with_scale(Vec3::splat(scale)),
     );
@@ -302,6 +318,7 @@ fn spawn_fighter(
     });
     let disc = commands
         .spawn((
+            DespawnOnExit(AppState::Minigame),
             Mesh3d(meshes.add(Cylinder::new(fighter.body.radius, 0.04))),
             MeshMaterial3d(disc_material.clone()),
             Transform::from_translation(world(fighter.body.pos) + Vec3::Y * 0.05),
@@ -309,6 +326,7 @@ fn spawn_fighter(
         .id();
     let brace_ring = commands
         .spawn((
+            DespawnOnExit(AppState::Minigame),
             Mesh3d(meshes.add(Torus::new(
                 fighter.body.radius * 1.15,
                 fighter.body.radius * 1.35,
@@ -424,6 +442,7 @@ fn crumble_edge(
             let angle = noise(count as i32, k, 30) * TAU;
             let dir = Vec3::new(angle.cos(), 0.0, angle.sin());
             commands.spawn((
+                DespawnOnExit(AppState::Minigame),
                 Debris {
                     velocity: dir * (0.5 + noise(count as i32, k, 31)) + Vec3::Y * 1.5,
                     spin: Vec3::new(noise(count as i32, k, 32), 1.0, noise(count as i32, k, 33))
@@ -634,15 +653,18 @@ fn shake_camera(
 
 fn spawn_hud(mut commands: Commands, active: Res<ActiveRun<LanternPush>>) {
     commands
-        .spawn(Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(30.0),
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Column,
-            align_items: AlignItems::Center,
-            row_gap: Val::Px(6.0),
-            ..default()
-        })
+        .spawn((
+            DespawnOnExit(AppState::Minigame),
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(30.0),
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(6.0),
+                ..default()
+            },
+        ))
         .with_children(|top| {
             top.spawn((
                 HudText::Banner,
@@ -662,14 +684,17 @@ fn spawn_hud(mut commands: Commands, active: Res<ActiveRun<LanternPush>>) {
 
     let game = &active.run.game;
     commands
-        .spawn(Node {
-            position_type: PositionType::Absolute,
-            bottom: Val::Px(20.0),
-            width: Val::Percent(100.0),
-            justify_content: JustifyContent::Center,
-            column_gap: Val::Px(16.0),
-            ..default()
-        })
+        .spawn((
+            DespawnOnExit(AppState::Minigame),
+            Node {
+                position_type: PositionType::Absolute,
+                bottom: Val::Px(20.0),
+                width: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                column_gap: Val::Px(16.0),
+                ..default()
+            },
+        ))
         .with_children(|row| {
             for seat in game.players.seats() {
                 let border = match team_index(&game.format, seat) {
@@ -777,8 +802,8 @@ fn banner_text(active: &ActiveRun<LanternPush>) -> (String, String) {
             } else {
                 format!("{} {verb}!", names(winners.into_iter()))
             };
-            let prompt = if game.phase == Phase::Finished && active.can_restart() {
-                "Press A to play again"
+            let prompt = if game.phase == Phase::Finished {
+                active.continue_prompt()
             } else {
                 ""
             };

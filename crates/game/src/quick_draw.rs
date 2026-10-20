@@ -6,8 +6,9 @@ use bevy::prelude::*;
 use minigame_quick_draw::{POINTS_TO_WIN, Phase, QuickDraw, Reaction, State};
 use sim_core::{Seat, TICK_HZ};
 
+use crate::flow::AppState;
 use crate::palette::{LANTERN_WARM, MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
-use crate::runner::{ActiveRun, Seats};
+use crate::runner::{ActiveRun, MinigameSet, Seats};
 use crate::scenery::{
     emissive_material, night_camera, noise, spawn_fireflies, spawn_lantern_folk,
     spawn_paper_lantern,
@@ -17,22 +18,22 @@ pub struct QuickDrawViewPlugin;
 
 impl Plugin for QuickDrawViewPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(ClearColor(NIGHT_SKY))
-            .insert_resource(GlobalAmbientLight {
-                color: MOONLIGHT,
-                brightness: 30.0,
-                ..default()
-            })
-            .add_systems(Startup, (spawn_scene, spawn_hud))
-            .add_systems(
-                Update,
-                (
-                    animate_lantern,
-                    animate_characters,
-                    (fit_camera, shake_camera).chain(),
-                    update_hud,
-                ),
-            );
+        app.add_systems(
+            OnEnter(AppState::Minigame),
+            (spawn_scene, spawn_hud)
+                .after(MinigameSet::Start)
+                .run_if(resource_exists::<ActiveRun<QuickDraw>>),
+        )
+        .add_systems(
+            Update,
+            (
+                animate_lantern,
+                animate_characters,
+                (fit_camera, shake_camera).chain(),
+                update_hud,
+            )
+                .run_if(resource_exists::<ActiveRun<QuickDraw>>),
+        );
     }
 }
 
@@ -78,13 +79,21 @@ fn spawn_scene(
     mut materials: ResMut<Assets<StandardMaterial>>,
     active: Res<ActiveRun<QuickDraw>>,
 ) {
+    commands.insert_resource(ClearColor(NIGHT_SKY));
+    commands.insert_resource(GlobalAmbientLight {
+        color: MOONLIGHT,
+        brightness: 30.0,
+        ..default()
+    });
     let camera = camera_transform(1.0);
     commands.spawn((
+        DespawnOnExit(AppState::Minigame),
         night_camera(camera, (12.0, 34.0)),
         CameraRig { base: camera },
     ));
 
     commands.spawn((
+        DespawnOnExit(AppState::Minigame),
         DirectionalLight {
             color: MOONLIGHT,
             illuminance: 350.0,
@@ -101,6 +110,7 @@ fn spawn_scene(
         &mut commands,
         &mut meshes,
         &mut materials,
+        AppState::Minigame,
         FIREFLY_COUNT,
         Vec3::new(-8.5, 0.5, -6.0),
         Vec3::new(8.5, 3.7, 3.0),
@@ -145,6 +155,7 @@ fn spawn_ground(
             let shade = &shades[(noise(i, j, 1) * 2.999) as usize];
             let y = -0.2 + (noise(i, j, 2) - 0.5) * 0.06;
             commands.spawn((
+                DespawnOnExit(AppState::Minigame),
                 Mesh3d(tile.clone()),
                 MeshMaterial3d(shade.clone()),
                 Transform::from_xyz(i as f32, y, j as f32),
@@ -171,6 +182,7 @@ fn spawn_lantern(
     });
     let post_height = LANTERN_POS.y - 0.6;
     commands.spawn((
+        DespawnOnExit(AppState::Minigame),
         Mesh3d(meshes.add(Cuboid::new(0.3, post_height, 0.3))),
         MeshMaterial3d(wood.clone()),
         Transform::from_xyz(LANTERN_POS.x, post_height / 2.0, LANTERN_POS.z),
@@ -178,6 +190,7 @@ fn spawn_lantern(
     let glow = materials.add(emissive_material(LANTERN_WARM, 1.5));
     commands
         .spawn((
+            DespawnOnExit(AppState::Minigame),
             Lantern {
                 material: glow.clone(),
             },
@@ -232,7 +245,7 @@ fn spawn_side_lanterns(
         (Vec3::new(3.6, 0.0, -5.5), LANTERN_WARM),
     ];
     for (pos, color) in spots {
-        spawn_paper_lantern(commands, meshes, materials, pos, color);
+        spawn_paper_lantern(commands, meshes, materials, AppState::Minigame, pos, color);
     }
 }
 
@@ -247,6 +260,7 @@ fn spawn_character(
         commands,
         meshes,
         materials,
+        AppState::Minigame,
         seat,
         Transform::from_translation(base),
     );
@@ -408,15 +422,18 @@ fn shake_camera(
 
 fn spawn_hud(mut commands: Commands, active: Res<ActiveRun<QuickDraw>>) {
     commands
-        .spawn(Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(36.0),
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Column,
-            align_items: AlignItems::Center,
-            row_gap: Val::Px(6.0),
-            ..default()
-        })
+        .spawn((
+            DespawnOnExit(AppState::Minigame),
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(36.0),
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(6.0),
+                ..default()
+            },
+        ))
         .with_children(|top| {
             top.spawn((
                 HudText::Banner,
@@ -435,14 +452,17 @@ fn spawn_hud(mut commands: Commands, active: Res<ActiveRun<QuickDraw>>) {
         });
 
     commands
-        .spawn(Node {
-            position_type: PositionType::Absolute,
-            bottom: Val::Px(20.0),
-            width: Val::Percent(100.0),
-            justify_content: JustifyContent::Center,
-            column_gap: Val::Px(16.0),
-            ..default()
-        })
+        .spawn((
+            DespawnOnExit(AppState::Minigame),
+            Node {
+                position_type: PositionType::Absolute,
+                bottom: Val::Px(20.0),
+                width: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                column_gap: Val::Px(16.0),
+                ..default()
+            },
+        ))
         .with_children(|row| {
             for seat in active.run.players.seats() {
                 row.spawn((
@@ -509,11 +529,7 @@ fn banner_text(active: &ActiveRun<QuickDraw>) -> (String, String) {
             let outcome = run.outcome().expect("finished games have an outcome");
             let winners: Vec<Seat> = outcome.winners().collect();
             let verb = if winners.len() == 1 { "wins" } else { "win" };
-            let prompt = if active.can_restart() {
-                "Press A to play again"
-            } else {
-                ""
-            };
+            let prompt = active.continue_prompt();
             (
                 format!("{} {verb}!", names(winners.into_iter())),
                 prompt.into(),

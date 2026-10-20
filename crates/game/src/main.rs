@@ -1,6 +1,13 @@
+mod board_view;
 mod dev;
+mod firefly_catch;
+mod flow;
+#[allow(dead_code)] // UI strings move to Fluent keys in the Game flow item.
+mod i18n;
 mod lantern_push;
+mod minigames;
 mod palette;
+mod particles;
 mod perf;
 mod quick_draw;
 mod runner;
@@ -11,11 +18,11 @@ use std::path::PathBuf;
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
 use clap::{Parser, ValueEnum};
-use minigame_lantern_push::LanternPush;
-use minigame_quick_draw::QuickDraw;
 use sim_core::{Difficulty, Format, PlayerSetup, RunConfig, Seat, TICK_HZ};
 
-use runner::{Controller, MinigamePlugin, RunSetup, Seats};
+use flow::{AppState, MinigameLaunch, Origin};
+use runner::{Controller, RunSetup, Seats};
+use sim_board::{Board, Game, Rules};
 
 /// The display title. This is the only place the game's name appears in code.
 pub const GAME_TITLE: &str = "Party Game";
@@ -24,8 +31,13 @@ pub const GAME_TITLE: &str = "Party Game";
 #[derive(Parser, Clone)]
 #[command(name = "game")]
 struct Cli {
-    #[arg(long, value_enum, default_value_t = MinigameId::QuickDraw)]
-    minigame: MinigameId,
+    /// Free play: jump straight into this minigame (e.g. quick-draw, lantern-push).
+    /// Without it, a board game starts.
+    #[arg(long)]
+    minigame: Option<String>,
+    /// Board game length in rounds (default: the standard rules).
+    #[arg(long)]
+    rounds: Option<u32>,
     /// Total seats in play (2-4). Seats beyond `--humans` are bots.
     #[arg(long, default_value_t = 4)]
     players: usize,
@@ -50,12 +62,6 @@ struct Cli {
     /// Log every gamepad button press (diagnoses controller mappings).
     #[arg(long)]
     log_input: bool,
-}
-
-#[derive(Clone, Copy, ValueEnum)]
-enum MinigameId {
-    QuickDraw,
-    LanternPush,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -145,18 +151,39 @@ fn main() {
     .insert_resource(Seats(seats))
     .add_plugins((perf::PerfOverlayPlugin, scenery::SceneryPlugin));
 
-    match cli.minigame {
-        MinigameId::QuickDraw => {
-            app.add_plugins((
-                MinigamePlugin::<QuickDraw>::new(setup),
-                quick_draw::QuickDrawViewPlugin,
-            ));
+    app.add_plugins((
+        runner::InputPlugin,
+        minigames::MinigamesPlugin,
+        board_view::BoardViewPlugin,
+        particles::ParticlesPlugin,
+    ));
+    match &cli.minigame {
+        Some(id) => {
+            let Some(entry) = minigame_registry::find(id) else {
+                let known: Vec<&str> = minigame_registry::ALL.iter().map(|e| e.id).collect();
+                eprintln!("unknown minigame {id:?} (known: {})", known.join(", "));
+                std::process::exit(2);
+            };
+            app.insert_resource(MinigameLaunch {
+                id: entry.id.to_string(),
+                setup,
+                origin: Origin::FreePlay,
+            })
+            .insert_state(AppState::Minigame);
         }
-        MinigameId::LanternPush => {
-            app.add_plugins((
-                MinigamePlugin::<LanternPush>::new(setup),
-                lantern_push::LanternPushViewPlugin,
-            ));
+        None => {
+            let mut rules = Rules::default();
+            if let Some(rounds) = cli.rounds {
+                rules.rounds = rounds.max(1);
+            }
+            let shown: Vec<_> = minigame_registry::ALL
+                .iter()
+                .filter(|entry| minigames::SHOWN.contains(&entry.id))
+                .copied()
+                .collect();
+            let game = Game::new(Board::meadow(), rules, players, seed, &shown);
+            app.insert_resource(board_view::BoardSession::new(game))
+                .insert_state(AppState::Board);
         }
     }
 

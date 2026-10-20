@@ -9,6 +9,7 @@ use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use sim_core::Seat;
 
+use crate::flow::AppState;
 use crate::palette::seat_color;
 
 pub struct SceneryPlugin;
@@ -80,6 +81,7 @@ pub fn spawn_lantern_folk(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
+    scope: AppState,
     seat: Seat,
     transform: Transform,
 ) -> LanternFolk {
@@ -130,7 +132,7 @@ pub fn spawn_lantern_folk(
     let rim = meshes.add(Cuboid::new(0.82, 0.09, 0.72));
 
     let root = commands
-        .spawn((transform, Visibility::default()))
+        .spawn((DespawnOnExit(scope), transform, Visibility::default()))
         .with_children(|root| {
             for x in [-0.2, 0.2] {
                 root.spawn((
@@ -199,6 +201,7 @@ pub fn spawn_fireflies(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
+    scope: AppState,
     count: usize,
     min: Vec3,
     max: Vec3,
@@ -218,6 +221,7 @@ pub fn spawn_fireflies(
                 noise(k, 0, 12) * size.z,
             );
         commands.spawn((
+            DespawnOnExit(scope),
             AmbientFirefly {
                 origin,
                 phase: noise(k, 0, 13) * 100.0,
@@ -236,6 +240,7 @@ pub fn spawn_paper_lantern(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
+    scope: AppState,
     pos: Vec3,
     color: LinearRgba,
 ) {
@@ -245,11 +250,13 @@ pub fn spawn_paper_lantern(
         ..default()
     });
     commands.spawn((
+        DespawnOnExit(scope),
         Mesh3d(meshes.add(Cuboid::new(0.12, 2.4, 0.12))),
         MeshMaterial3d(pole),
         Transform::from_translation(pos + Vec3::Y * 1.2),
     ));
     commands.spawn((
+        DespawnOnExit(scope),
         Mesh3d(meshes.add(Cuboid::new(0.42, 0.55, 0.42))),
         MeshMaterial3d(materials.add(emissive_material(color, 2.2))),
         Transform::from_translation(pos + Vec3::Y * 2.55),
