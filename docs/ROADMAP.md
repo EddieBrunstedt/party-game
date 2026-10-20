@@ -74,8 +74,10 @@ A fun problem found at the playable stage gets fixed straight away; polish won't
   - Needs human playtest: the join flow with real pads (several controllers joining, character pick, leaving), and whether a reconnected pad comes back to its seat. Bevy may give a reconnected pad a new entity, in which case the seat stays "lost"; this is untested. `cargo run -p game`.
 - [ ] **Four lantern-folk characters.** Modelled in Blender via MCP on one shared rig with shared animations (idle, hop, celebrate, slump), exported as glTF, replacing the code-built placeholders.
   - Done when: all four load in-game from `.glb` and animate.
+  - Skipped overnight (2026-10-20): needs Blender running with its MCP. Meanwhile the four characters exist as code-built placeholders with distinct light sources (`game/src/characters.rs`, `scenery.rs`).
 - [ ] **Polish pass 1.** Bring the three minigames and the board to the **polished** level using the new characters, plus audio (`bevy_kira_audio`, CC0/sfxr-style SFX) and `bevy_hanabi` particles.
   - Done when: every minigame and the board meet the polished definition, and a full game has been playtested by humans.
+  - Skipped overnight (2026-10-20): needs the new characters and a human playtest.
 - [x] **Steam Deck quality preset.** A "Deck" preset at 1280×800 with the content budgets from DESIGN.md §2, toggleable in-game.
   - Done when: the preset holds ~2–3 ms GPU frame time on the dev RTX 2080 Ti in the busiest scene.
   - Built: `game/src/quality.rs`. Deck = 1280×800 window, one shadow cascade at 1024² (Desktop: two at 2048²), no point-light shadows (Desktop keeps the Quick Draw lantern's), no MSAA (Desktop 4×), bloom chain capped at 256 (Desktop 512). F4 or a pad's Select toggles it; `--quality deck` starts in it. The overlay (F3) shows GPU time; `--gpu-report` prints avg/p95/max and per-pass times at exit (`game/src/perf.rs`, Bevy's `RenderDiagnosticsPlugin` timestamp queries).
