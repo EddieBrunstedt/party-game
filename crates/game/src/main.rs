@@ -41,6 +41,9 @@ struct Cli {
     screenshot_at: Vec<f32>,
     #[arg(long, default_value = "screenshots")]
     screenshot_dir: PathBuf,
+    /// Log every gamepad button press (diagnoses controller mappings).
+    #[arg(long)]
+    log_input: bool,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -118,6 +121,9 @@ fn main() {
         }
     }
 
+    if cli.log_input {
+        app.add_plugins(dev::InputLogPlugin);
+    }
     if !cli.screenshot_at.is_empty() {
         app.add_plugins(dev::ScreenshotPlugin {
             at_seconds: cli.screenshot_at,

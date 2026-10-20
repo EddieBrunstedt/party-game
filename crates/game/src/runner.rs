@@ -4,7 +4,7 @@
 
 use std::marker::PhantomData;
 
-use bevy::input::gamepad::{Gamepad, GamepadButton};
+use bevy::input::gamepad::{Gamepad, GamepadButton, GamepadConnection, GamepadConnectionEvent};
 use bevy::prelude::*;
 use sim_core::{
     Button, Difficulty, Format, Input, MAX_PLAYERS, Minigame, PlayerSetup, Run, RunConfig, Seat,
@@ -94,7 +94,7 @@ impl<M: Minigame> Plugin for MinigamePlugin<M> {
     fn build(&self, app: &mut App) {
         app.insert_resource(ActiveRun::<M>::new(self.setup))
             .init_resource::<PressLatch>()
-            .add_systems(Update, latch_presses)
+            .add_systems(Update, (log_gamepad_connections, latch_presses))
             .add_systems(FixedUpdate, step_run::<M>);
     }
 }
@@ -114,6 +114,22 @@ const GAMEPAD_BUTTONS: [(GamepadButton, Button); 4] = [
     (GamepadButton::West, Button::X),
     (GamepadButton::Start, Button::START),
 ];
+
+fn log_gamepad_connections(mut events: MessageReader<GamepadConnectionEvent>) {
+    for event in events.read() {
+        match &event.connection {
+            GamepadConnection::Connected {
+                name,
+                vendor_id,
+                product_id,
+            } => info!(
+                "gamepad connected: {name} ({vendor_id:04x?}:{product_id:04x?}) as {}",
+                event.gamepad
+            ),
+            GamepadConnection::Disconnected => info!("gamepad disconnected: {}", event.gamepad),
+        }
+    }
+}
 
 fn connected_gamepads<'a>(gamepads: &'a Query<(Entity, &Gamepad)>) -> Vec<&'a Gamepad> {
     let mut pads: Vec<_> = gamepads.iter().collect();

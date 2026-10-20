@@ -55,3 +55,20 @@ fn take_screenshots(
         exit.write(AppExit::Success);
     }
 }
+
+/// Logs every gamepad button press, to diagnose controller mappings.
+pub struct InputLogPlugin;
+
+impl Plugin for InputLogPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Update, log_gamepad_presses);
+    }
+}
+
+fn log_gamepad_presses(gamepads: Query<(Entity, &Gamepad)>) {
+    for (entity, gamepad) in &gamepads {
+        for button in gamepad.get_just_pressed() {
+            info!("gamepad {entity}: pressed {button:?}");
+        }
+    }
+}
