@@ -11,7 +11,7 @@ use minigame_lantern_push::{
 use sim_core::physics::Vec2 as SimVec2;
 use sim_core::{Format, Seat, TICK_HZ};
 
-use crate::characters::{Character, Roster};
+use crate::characters::{Character, Pose, Roster};
 use crate::flow::AppState;
 use crate::i18n::{self, bot_tag, halted_banner};
 use crate::palette::{LANTERN_WARM, MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
@@ -500,7 +500,7 @@ fn animate_fighters(
     time: Res<Time>,
     fixed: Res<Time<Fixed>>,
     active: Res<ActiveRun<LanternPush>>,
-    mut fighters: Query<(&FighterView, &mut Transform, &mut Visibility)>,
+    mut fighters: Query<(&FighterView, &mut Transform, &mut Visibility, &mut Pose)>,
     mut parts: Query<(&mut Transform, &mut Visibility), Without<FighterView>>,
     mut lights: Query<&mut PointLight>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -512,7 +512,7 @@ fn animate_fighters(
         .outcome
         .map(|o| o.winners().collect())
         .unwrap_or_default();
-    for (view, mut transform, mut visibility) in &mut fighters {
+    for (view, mut transform, mut visibility, mut pose) in &mut fighters {
         let seat = view.seat;
         let fighter: &Fighter = game.fighter(seat);
         let before: &Fighter = active.previous.fighter(seat);
@@ -533,10 +533,12 @@ fn animate_fighters(
         };
 
         let celebrating = winners.contains(&seat) && fighter.standing();
-        let hop = if celebrating {
-            (now * 9.0 + seat.0 as f32).sin().abs() * 0.4
+        *pose = if celebrating {
+            Pose::Celebrate
+        } else if game.outcome.is_some() {
+            Pose::Slump
         } else {
-            0.0
+            Pose::Idle
         };
         let mut rotation = facing_rotation(fighter.facing);
         let mut scale = Vec3::ONE;
@@ -553,7 +555,7 @@ fn animate_fighters(
         if tumble > 0.0 {
             rotation *= Quat::from_rotation_x(-tumble);
         }
-        transform.translation = world(pos) + Vec3::Y * (hop - drop);
+        transform.translation = world(pos) - Vec3::Y * drop;
         transform.rotation = rotation;
         transform.scale = scale * base_scale;
 

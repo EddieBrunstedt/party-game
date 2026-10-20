@@ -124,6 +124,21 @@ impl From<BotLevel> for Difficulty {
     }
 }
 
+/// Where `assets/` is, relative to Bevy's base path. Under `cargo run` that's the crate
+/// directory and a shipped build keeps `assets/` beside the executable; a dev binary started
+/// directly (say under gamescope) has neither, so it falls back to this crate's own folder.
+fn asset_dir() -> String {
+    let beside_exe = std::env::current_exe()
+        .ok()
+        .and_then(|exe| Some(exe.parent()?.join("assets")))
+        .is_some_and(|dir| dir.is_dir());
+    if std::env::var_os("CARGO_MANIFEST_DIR").is_some() || beside_exe {
+        "assets".into()
+    } else {
+        concat!(env!("CARGO_MANIFEST_DIR"), "/assets").into()
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
     let players = cli.players.clamp(2, 4);
@@ -156,14 +171,21 @@ fn main() {
     };
 
     let mut app = App::new();
-    app.add_plugins(DefaultPlugins.set(WindowPlugin {
-        primary_window: Some(Window {
-            title: GAME_TITLE.into(),
-            resolution: WindowResolution::new(1280, 800),
-            ..default()
-        }),
-        ..default()
-    }))
+    app.add_plugins(
+        DefaultPlugins
+            .set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: GAME_TITLE.into(),
+                    resolution: WindowResolution::new(1280, 800),
+                    ..default()
+                }),
+                ..default()
+            })
+            .set(AssetPlugin {
+                file_path: asset_dir(),
+                ..default()
+            }),
+    )
     .insert_resource(Time::<Fixed>::from_hz(TICK_HZ as f64))
     .insert_resource(Seats(seats))
     .init_resource::<characters::Roster>()
@@ -173,6 +195,7 @@ fn main() {
         },
         quality::QualityPlugin(cli.quality),
         scenery::SceneryPlugin,
+        characters::CharactersPlugin,
     ));
 
     app.add_plugins((

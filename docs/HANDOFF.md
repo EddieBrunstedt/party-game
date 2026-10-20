@@ -1,30 +1,30 @@
-# Handoff: session 2026-10-20 (afternoon)
+# Handoff: session 2026-10-20 (late afternoon)
 
-Briefing for the next session. The overnight session's notes are in git history (`git log -p docs/HANDOFF.md`).
+Briefing for the next session. Earlier sessions' notes are in git history (`git log -p docs/HANDOFF.md`).
 
 ## Done this session
 
-- **Firefly Catch readability** (playtest 1: "couldn't catch a single one"): the net stays open for 0.2 s (`SWING_TICKS`) and is bigger, still short of the hop distance (tested). Each player has a ground ring showing exactly where the net catches; each firefly has a ground spot that pulses while it's tired.
-- **Shared minigame start** (playtest 2: rules "fly by in under a second"): `crates/game/src/intro.rs`. Every minigame opens with an instruction card that waits for every human's A (bots are ready at once; with no humans it starts after 3 s), then the same 3-2-1 countdown, `sim_core::COUNTDOWN_TICKS`, drawn from `Run::tick`. A minigame supplies only Fluent keys (`{id}-title`, `-goal`, `-how`, `-a`; optional `-b`, `-stick`, `-goal-teams`, `-goal-solo`), and a test checks the required ones. The developer says the ready screen "works great for now".
-- **Blender MCP** is set up and connected: the official Blender Lab server in `~/blender_mcp` (venv, no `uv`), add-on v1.0.3 installed in Blender 5.2.2, registered in Claude Code at local scope. See CLAUDE.md.
-- Evidence: workspace tests and clippy pass. Screenshots were checked for the card (1v3 with a human pressing A, 2v2 with bots only, Quick Draw card → countdown → play). A scripted board session went Title → Join → Board → 2 × (Minigame → Board) with no panics.
+- Committed the previous session's work (shared instruction card, Firefly Catch readability) after tests and clippy passed.
+- **Four lantern-folk characters** (ROADMAP ticked): `art/lantern_folk.py` builds them in Blender on one rig with `idle`, `hop`, `celebrate` and `slump`, and exports `crates/game/assets/characters/*.glb`. `game/src/characters.rs` loads them, recolours `Body`/`Glow`/`Accent` per seat, moves the head light onto the head bone, and plays whatever `Pose` a view sets on the character's root. Every view now sets poses instead of bouncing the root in code.
+- Small fixes: `assets/` is found when the binary runs outside cargo (gamescope); "P1 & P4 take the round".
+- Evidence: workspace tests, clippy and fmt pass; screenshots of every scene; Deck GPU time unchanged (Quick Draw 0.55 ms).
 
 ## State of the tree
 
-All of the above is **uncommitted** (`git status`). Review and commit it first, unless the developer says otherwise.
+Committed. `.glb` and `.blend` go through Git LFS (`.gitattributes`); `art/*.blend1` is ignored.
 
 ## Decisions
 
-- **Firefly Catch is on hold.** The developer finds it "not very fun" and may cut it. Don't tune or polish it until they decide. It stays in the board's pool for now.
-- The countdown is now 3 s in every minigame (it used to be 2 s or 4 s), and the card replaced each minigame's own intro text.
+- The script is the source of the characters: edit `art/lantern_folk.py` and re-run it, rather than editing the `.blend`. Through the MCP: `exec(compile(open(p).read(), p, "exec"), {"__file__": p, "__name__": "__main__"})`, with `result` set to a dict.
+- Firefly Catch is still **on hold** (see ROADMAP); it only got the pose change.
 
 ## Next
 
-**Four lantern-folk characters** (ROADMAP.md, first unticked item), now unblocked by the Blender MCP. Then Polish pass 1, which leaves Firefly Catch out, and needs a human playtest.
+**Polish pass 1** (ROADMAP). It needs a human playtest to finish, so ask the developer to look at the characters first (do they read at board distance, and do the animations have enough life?), then work through audio, particles and the polished definition for Quick Draw, Lantern Push and the board.
 
 ## Useful to know
 
-- Scripted board session: `--press-every 1.5:Space --press 5:Enter`. Enter starts the game from the join screen; without it the run sits on Join.
-- `--humans 0` screenshot runs now spend about 3 s on the instruction card before the countdown, so shift `--screenshot-at` times.
-- `/tmp` has a per-user quota. The overnight scratchpad had grown to 13 GB of build output, and filling the quota breaks every shell command. Keep scratch builds small or delete them when done.
-- Still open from the overnight session: 12 rounds took about 22 minutes with bots, so the 30–40 minute target may need 15. Board bots hash `usize` lengths, which is fine on x86_64 but would desync with 32-bit peers.
+- To look at the models in Blender, render a pose sheet: hide all but one character mesh, set `LanternFolk.animation_data.action` to a clip, call `frame_set`, and render with EEVEE. The four meshes share the rig and overlap at the origin.
+- Scripted board session: `--press-every 1.5:Space --press 5:Enter`. `--humans 0` minigame runs spend about 3 s on the instruction card. A Quick Draw match with seed 3 ends at about 60 s.
+- `/tmp` has a per-user quota; keep scratch builds small.
+- Still open: 12 bot rounds take about 22 minutes, so the 30–40 minute target may need 15. Board bots hash `usize` lengths, which would desync with 32-bit peers.

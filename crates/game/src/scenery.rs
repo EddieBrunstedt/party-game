@@ -1,5 +1,6 @@
-//! Placeholder scenery shared by every scene: the night camera, code-built "lantern folk",
-//! drifting fireflies and paper lanterns. Replaced piece by piece as real assets arrive.
+//! Scenery shared by every scene: the night camera, the lantern folk, drifting fireflies and
+//! paper lanterns. The folk are Blender models (`crate::characters`); the rest are code-built
+//! placeholders, replaced piece by piece as real assets arrive.
 
 use std::f32::consts::PI;
 
@@ -9,7 +10,7 @@ use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use sim_core::Seat;
 
-use crate::characters::Character;
+use crate::characters::{Character, CharacterModel, Pose};
 use crate::flow::AppState;
 use crate::palette::seat_color;
 
@@ -76,8 +77,8 @@ pub struct LanternFolk {
     pub head_light: Entity,
 }
 
-/// Placeholder "lantern folk": every character shares this body plan; the glowing head is
-/// where their personality (and player colour) lives. The root sits at the feet, facing +z.
+/// A lantern-folk character in its seat's colours, with the seat's marker floating overhead.
+/// The root sits at the feet, facing +z; its [`Pose`] says how the body moves.
 pub fn spawn_lantern_folk(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -93,12 +94,8 @@ pub fn spawn_lantern_folk(
         perceptual_roughness: 0.8,
         ..default()
     });
-    let dark = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.02, 0.02, 0.025),
-        perceptual_roughness: 0.5,
-        ..default()
-    });
     let head_material = materials.add(emissive_material(color, 1.8));
+    let accent = materials.add(emissive_material(color, 6.0));
     let marker_material = materials.add(StandardMaterial {
         base_color: Color::BLACK,
         emissive: color * 4.0,
@@ -128,134 +125,32 @@ pub fn spawn_lantern_folk(
         ))
         .id();
 
-    let leg = meshes.add(Cuboid::new(0.22, 0.32, 0.26));
-    let arm = meshes.add(Cuboid::new(0.18, 0.46, 0.22));
-    let eye = meshes.add(Cuboid::new(0.1, 0.15, 0.04));
-    let rim = meshes.add(Cuboid::new(0.82, 0.09, 0.72));
-
     let root = commands
-        .spawn((DespawnOnExit(scope), transform, Visibility::default()))
-        .with_children(|root| {
-            for x in [-0.2, 0.2] {
-                root.spawn((
-                    Mesh3d(leg.clone()),
-                    MeshMaterial3d(body.clone()),
-                    Transform::from_xyz(x, 0.16, 0.0),
-                ));
-            }
-            root.spawn((
-                Mesh3d(meshes.add(Cuboid::new(0.8, 0.74, 0.6))),
-                MeshMaterial3d(body.clone()),
-                Transform::from_xyz(0.0, 0.68, 0.0),
-            ));
-            for x in [-0.5, 0.5] {
-                root.spawn((
-                    Mesh3d(arm.clone()),
-                    MeshMaterial3d(body.clone()),
-                    Transform::from_xyz(x, 0.68, 0.0),
-                ));
-            }
-            root.spawn((
-                Mesh3d(meshes.add(Cuboid::new(0.72, 0.62, 0.62))),
-                MeshMaterial3d(head_material.clone()),
-                Transform::from_xyz(0.0, 1.42, 0.0),
-            ));
-            for y in [1.08, 1.77] {
-                root.spawn((
-                    Mesh3d(rim.clone()),
-                    MeshMaterial3d(dark.clone()),
-                    Transform::from_xyz(0.0, y, 0.0),
-                ));
-            }
-            for x in [-0.15, 0.15] {
-                root.spawn((
-                    Mesh3d(eye.clone()),
-                    MeshMaterial3d(dark.clone()),
-                    Transform::from_xyz(x, 1.45, 0.32),
-                ));
-            }
-            root.spawn((
-                Marker { base_y: 2.55 },
-                Mesh3d(marker_mesh),
-                MeshMaterial3d(marker_material),
-                Transform::from_xyz(0.0, 2.55, 0.0).with_rotation(marker_rotation),
-            ));
-            spawn_light_source(root, meshes, materials, character, color, &dark);
-        })
+        .spawn((
+            DespawnOnExit(scope),
+            transform,
+            Visibility::default(),
+            Pose::default(),
+        ))
+        .with_child((
+            Marker { base_y: 2.55 },
+            Mesh3d(marker_mesh),
+            MeshMaterial3d(marker_material),
+            Transform::from_xyz(0.0, 2.55, 0.0).with_rotation(marker_rotation),
+        ))
         .add_child(head_light)
         .id();
+    commands.entity(root).insert(CharacterModel {
+        character,
+        body,
+        glow: head_material.clone(),
+        accent,
+        head_light,
+    });
     LanternFolk {
         root,
         head_material,
         head_light,
-    }
-}
-
-/// Each character's light source, on top of the shared lantern head.
-fn spawn_light_source(
-    root: &mut ChildSpawnerCommands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
-    character: Character,
-    color: LinearRgba,
-    dark: &Handle<StandardMaterial>,
-) {
-    match character {
-        // The plain paper lantern: a tassel hanging under the chin.
-        Character::PaperLantern => {
-            root.spawn((
-                Mesh3d(meshes.add(Cuboid::new(0.08, 0.22, 0.08))),
-                MeshMaterial3d(materials.add(emissive_material(color, 2.5))),
-                Transform::from_xyz(0.0, 1.88, 0.0),
-            ));
-        }
-        // A jar lid on top, with fireflies glowing inside the head.
-        Character::FireflyJar => {
-            root.spawn((
-                Mesh3d(meshes.add(Cylinder::new(0.3, 0.14))),
-                MeshMaterial3d(dark.clone()),
-                Transform::from_xyz(0.0, 1.86, 0.0),
-            ));
-            let fly = meshes.add(Cuboid::new(0.07, 0.07, 0.07));
-            let glow = materials.add(StandardMaterial {
-                base_color: Color::BLACK,
-                emissive: LinearRgba::rgb(0.75, 1.0, 0.3) * 12.0,
-                ..default()
-            });
-            for (x, y) in [(-0.22, 1.3), (0.2, 1.55), (0.05, 1.25)] {
-                root.spawn((
-                    Mesh3d(fly.clone()),
-                    MeshMaterial3d(glow.clone()),
-                    Transform::from_xyz(x, y, 0.33),
-                ));
-            }
-        }
-        // A candle flame burning on top.
-        Character::Candle => {
-            root.spawn((
-                Mesh3d(meshes.add(Cylinder::new(0.09, 0.16))),
-                MeshMaterial3d(materials.add(StandardMaterial {
-                    base_color: Color::srgb(0.85, 0.82, 0.7),
-                    ..default()
-                })),
-                Transform::from_xyz(0.0, 1.88, 0.0),
-            ));
-            root.spawn((
-                Mesh3d(meshes.add(Cone::new(0.11, 0.3))),
-                MeshMaterial3d(
-                    materials.add(emissive_material(LinearRgba::rgb(1.0, 0.6, 0.15), 9.0)),
-                ),
-                Transform::from_xyz(0.0, 2.11, 0.0),
-            ));
-        }
-        // A neon halo floating over the head.
-        Character::NeonRing => {
-            root.spawn((
-                Mesh3d(meshes.add(Torus::new(0.26, 0.34))),
-                MeshMaterial3d(materials.add(emissive_material(color, 7.0))),
-                Transform::from_xyz(0.0, 2.05, 0.0),
-            ));
-        }
     }
 }
 

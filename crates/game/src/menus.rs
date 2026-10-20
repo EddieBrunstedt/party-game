@@ -12,7 +12,7 @@ use sim_board::{Board, Game, Rules};
 use sim_core::{Difficulty, Format, FormatKind, MAX_PLAYERS, PlayerSetup, Seat};
 
 use crate::board_view::{BoardSession, format_text, minigame_title};
-use crate::characters::{Character, Roster};
+use crate::characters::{Character, Pose, Roster};
 use crate::flow::{AppState, MinigameLaunch, Origin};
 use crate::palette::{MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
 use crate::runner::{Controller, Pad, RunSetup, Seats};
@@ -819,7 +819,7 @@ fn results_screen(
     nav: Res<DeviceNav>,
     seats: Res<Seats>,
     session: Option<Res<BoardSession>>,
-    mut folk: Query<(&MenuFolk, &mut Transform)>,
+    mut folk: Query<(&MenuFolk, &mut Pose)>,
     mut entered: Local<Option<f32>>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
@@ -832,10 +832,12 @@ fn results_screen(
     let since = now - *entered.get_or_insert(now);
     if let Some(session) = &session {
         let standings = session.game.standings();
-        for (menu_folk, mut transform) in &mut folk {
-            if standings.placement[menu_folk.0.index()] == Some(1) {
-                transform.translation.y = (now * 8.0).sin().abs() * 0.5;
-            }
+        for (menu_folk, mut pose) in &mut folk {
+            *pose = if standings.placement[menu_folk.0.index()] == Some(1) {
+                Pose::Celebrate
+            } else {
+                Pose::Slump
+            };
         }
     }
     let no_humans = Seat::ALL.into_iter().all(|s| !seats.is_human(s));

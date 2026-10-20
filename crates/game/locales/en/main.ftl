@@ -84,7 +84,10 @@ quick-draw-a = draw
 quick-draw-wait = Wait for it...
 quick-draw-round = Round { $round }
 quick-draw-draw = DRAW!
-quick-draw-round-won = { $players } takes the round!
+quick-draw-round-won = { $players } { $count ->
+        [one] takes
+       *[other] take
+    } the round!
 quick-draw-ms = { $ms } ms
 quick-draw-nobody = Nobody scores
 quick-draw-false-start = FALSE START

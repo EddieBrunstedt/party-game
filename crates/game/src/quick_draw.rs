@@ -1,12 +1,10 @@
 //! Presentation for Quick Draw. Reads `ActiveRun<QuickDraw>` only; never writes simulation state.
 
-use std::f32::consts::PI;
-
 use bevy::prelude::*;
 use minigame_quick_draw::{POINTS_TO_WIN, Phase, QuickDraw, Reaction, State};
 use sim_core::{Seat, TICK_HZ};
 
-use crate::characters::{Character, Roster};
+use crate::characters::{Character, HOP_SECONDS, Pose, Roster};
 use crate::flow::AppState;
 use crate::i18n::{self, bot_tag, halted_banner, names};
 use crate::palette::{LANTERN_WARM, MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
@@ -60,7 +58,6 @@ struct CameraRig {
 #[derive(Component)]
 struct Contestant {
     seat: Seat,
-    base: Vec3,
     head_material: Handle<StandardMaterial>,
     head_light: Entity,
     /// Reaction last seen, to trigger a hop the moment a press registers.
@@ -273,7 +270,6 @@ fn spawn_character(
     );
     commands.entity(folk.root).insert(Contestant {
         seat,
-        base,
         head_material: folk.head_material,
         head_light: folk.head_light,
         seen: Reaction::Waiting,
@@ -321,18 +317,16 @@ fn animate_lantern(
     }
 }
 
-const HOP_SECONDS: f32 = 0.35;
-
 fn animate_characters(
     time: Res<Time>,
     active: Res<ActiveRun<QuickDraw>>,
-    mut characters: Query<(&mut Contestant, &mut Transform)>,
+    mut characters: Query<(&mut Contestant, &mut Pose)>,
     mut lights: Query<&mut PointLight, Without<LanternLight>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let now = time.elapsed_secs();
     let game = &active.run.game;
-    for (mut character, mut transform) in &mut characters {
+    for (mut character, mut pose) in &mut characters {
         let seat = character.seat;
         let reaction = game.reactions[seat.index()];
         if character.seen_generation != active.generation {
@@ -352,19 +346,15 @@ fn animate_characters(
             Phase::Finished => game.scores[seat.index()] == *game.scores.iter().max().unwrap_or(&0),
             _ => false,
         };
-        let idle = (now * 2.2 + seat.0 as f32 * 1.7).sin() * 0.03;
-        let hop = match character.hop_started {
-            Some(start) if now - start < HOP_SECONDS => {
-                ((now - start) / HOP_SECONDS * PI).sin() * 0.7
-            }
-            _ if celebrating => (now * 9.0).sin().abs() * 0.35,
-            _ => 0.0,
-        };
-        transform.translation = character.base + Vec3::Y * (idle + hop);
-        transform.rotation = if reaction == Reaction::FalseStart {
-            Quat::from_rotation_x(-0.35)
-        } else {
-            Quat::IDENTITY
+        let hopping = character
+            .hop_started
+            .is_some_and(|start| now - start < HOP_SECONDS);
+        *pose = match reaction {
+            _ if hopping => Pose::Hop,
+            _ if celebrating => Pose::Celebrate,
+            Reaction::FalseStart | Reaction::TooSlow => Pose::Slump,
+            _ if game.phase == Phase::Finished => Pose::Slump,
+            _ => Pose::Idle,
         };
 
         let glow = match reaction {
@@ -516,7 +506,11 @@ fn banner_text(active: &ActiveRun<QuickDraw>) -> (String, String) {
                 .collect();
             match winners.first().map(|s| game.reactions[s.index()]) {
                 Some(Reaction::Fired { ticks }) => (
-                    tr!("quick-draw-round-won", players = names(winners.into_iter())),
+                    tr!(
+                        "quick-draw-round-won",
+                        count = winners.len() as u32,
+                        players = names(winners.into_iter())
+                    ),
                     tr!("quick-draw-ms", ms = ms(ticks)),
                 ),
                 _ => (tr!("quick-draw-nobody"), String::new()),

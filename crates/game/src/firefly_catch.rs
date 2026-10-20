@@ -15,7 +15,7 @@ use minigame_firefly_catch::{
 use sim_core::physics::Vec2 as SimVec2;
 use sim_core::{Format, Seat, TICK_HZ};
 
-use crate::characters::{Character, Roster};
+use crate::characters::{Character, Pose, Roster};
 use crate::flow::AppState;
 use crate::i18n::{self, bot_tag, halted_banner, names};
 use crate::palette::{LANTERN_WARM, MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
@@ -574,7 +574,7 @@ fn animate_players(
     time: Res<Time>,
     fixed: Res<Time<Fixed>>,
     active: Res<ActiveRun<FireflyCatch>>,
-    mut players: Query<(&PlayerView, &mut Transform)>,
+    mut players: Query<(&PlayerView, &mut Transform, &mut Pose)>,
     mut parts: Query<&mut Transform, Without<PlayerView>>,
     reaches: Query<&NetReach>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -589,16 +589,18 @@ fn animate_players(
     } else {
         Vec::new()
     };
-    for (view, mut transform) in &mut players {
+    for (view, mut transform, mut pose) in &mut players {
         let player = &game.players[view.seat.index()];
         let before = &active.previous.players[view.seat.index()];
         let pos = world(before.body.pos.lerp(player.body.pos, alpha));
-        let hop = if winners.contains(&view.seat) {
-            (now * 9.0 + view.seat.0 as f32).sin().abs() * 0.4
+        *pose = if winners.contains(&view.seat) {
+            Pose::Celebrate
+        } else if game.phase == Phase::Finished {
+            Pose::Slump
         } else {
-            0.0
+            Pose::Idle
         };
-        transform.translation = pos + Vec3::Y * hop;
+        transform.translation = pos;
         let mut rotation = Quat::from_rotation_y(player.facing.x.atan2(player.facing.y));
         if player.dash_ticks > 0 {
             rotation *= Quat::from_rotation_x(0.4);

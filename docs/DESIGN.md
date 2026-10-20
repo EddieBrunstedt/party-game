@@ -77,6 +77,7 @@ Items, shops, event spaces, bonus stars, last-5-turns events, **duels (1v1, need
   - the same proportions: chunky, rounded, stubby limbs
   - the same hitbox in the simulation
 - **Concept: "lantern folk".** One species, and each character's personality is its *light source*: a paper lantern, a jar of fireflies, a candle flame, a neon ring, and so on. An emissive accent in the player colour makes everyone easy to spot.
+- **Models** (`art/lantern_folk.py`, `game/src/characters.rs`): a Python script builds all four characters in Blender from scratch and exports `crates/game/assets/characters/<id>.glb`. One rig (`root`, `body`, `head`, `arm.L/R`, `leg.L/R`; every part rigidly skinned to one bone) with four animations, `idle`, `hop`, `celebrate` and `slump`, each keying every bone. In game the `Body`, `Glow` and `Accent` materials take the player colour, the head's point light rides on the `head` bone, and views animate a character by setting its `Pose`; the model blends to the matching clip. Code still moves the root for things the clips don't cover (walking, leaning into a dash, falling off).
 - **Customization (not early):** attachable cosmetics on standard sockets (head, back, hand) and a personal glow colour. Unlocks come later. Cosmetics never change the hitbox and never affect the simulation.
 
 ## 4. Architecture
@@ -149,11 +150,11 @@ Determinism rules for simulation code:
 - HDR camera, `Bloom`, TonyMcMapface or AgX tonemapping, emissive materials, volumetric fog, SSAO on desktop presets, and `bevy_hanabi` GPU particles.
 - **Board camera:** follows the active player. **Minigame cameras:** a single arena view.
 - Rendering interpolates between simulation ticks: the runner keeps the state from one tick back, and views blend by `Time<Fixed>::overstep_fraction()`.
-- Shared placeholder pieces (night camera, lantern folk, fireflies, paper lanterns) live in `game/src/scenery.rs`.
+- Shared scenery (night camera, lantern folk, fireflies, paper lanterns) lives in `game/src/scenery.rs`. The lantern folk are Blender models (§3.5); the rest are code-built placeholders.
 
 ### 4.6 Content pipeline
 
-- **3D:** Blender, which Claude drives through its MCP, plus procedural generation. Shapes are loose "voxel-ish": whatever is easy to build in Blender, with chunky forms and bevelled edges. Export as glTF (`.glb`), and use `bevy_skein` for components on Blender objects.
+- **3D:** Blender, which Claude drives through its MCP, plus procedural generation. Shapes are loose "voxel-ish": whatever is easy to build in Blender, with chunky forms and bevelled edges. Export as glTF (`.glb`) into `crates/game/assets/`, and use `bevy_skein` for components on Blender objects. Models are built by Python scripts in `art/` that rebuild the `.blend` from scratch and export, so changes go into the script, then a re-run (through the MCP, or `blender --background --python <script>`) rewrites both.
 - **Boards:** the space graph is a **RON file**, the source of truth that the simulation loads without Bevy. The Blender scene is decoration around the graph's coordinates. A script can push the graph points into Blender as guides, and an in-game debug view draws the graph.
 - **Audio:**
   - royalty-free/CC0 packs, and procedural SFX made in code (sfxr-style)

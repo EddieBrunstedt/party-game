@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use sim_board::{Awaiting, Board, Decision, Event, Game, Intent, SpaceId, SpaceKind, bot_intent};
 use sim_core::{Button, Format, MAX_PLAYERS, Outcome, Seat};
 
-use crate::characters::Roster;
+use crate::characters::{Pose, Roster};
 use crate::flow::{AppState, MinigameLaunch, MinigameResult, Origin};
 use crate::i18n::{bot_tag, names};
 use crate::palette::{LANTERN_WARM, MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
@@ -734,7 +734,7 @@ fn walk_progress(playing: &Playing, now: f32) -> f32 {
 fn move_pawns(
     time: Res<Time>,
     session: Res<BoardSession>,
-    mut pawns: Query<(&mut Pawn, &mut Transform)>,
+    mut pawns: Query<(&mut Pawn, &mut Transform, &mut Pose)>,
 ) {
     let now = time.elapsed_secs();
     let dt = time.delta_secs();
@@ -744,7 +744,7 @@ fn move_pawns(
         .final_standings
         .map(|o| o.winners().collect())
         .unwrap_or_default();
-    for (mut pawn, mut transform) in &mut pawns {
+    for (mut pawn, mut transform, mut pose) in &mut pawns {
         let seat = pawn.seat;
         let mut target = pawn_rest(&session, seat);
         let mut heading = None;
@@ -774,9 +774,11 @@ fn move_pawns(
             session.playing.as_ref().map(|p| &p.event),
             Some(Event::StarBought { seat: s, .. }) if *s == seat
         ) || final_winners.contains(&seat);
-        if cheering {
-            transform.translation.y = target.y + (now * 9.0).sin().abs() * 0.35;
-        }
+        *pose = if cheering {
+            Pose::Celebrate
+        } else {
+            Pose::Idle
+        };
         let yaw = match heading {
             Some(dir) => dir.x.atan2(dir.z),
             // Idle pawns turn to face the camera.
