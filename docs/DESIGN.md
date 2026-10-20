@@ -14,8 +14,8 @@ A Mario Party-style board-and-minigame party game for **2–4 players**, made in
 
 - Windows, Linux and Steam Deck. macOS only if it's cheap. No web or consoles.
 - **Performance floor: 60 fps on Steam Deck at 1280×800.** We don't have a Deck yet, so we enforce this with budgets:
-  - an in-game frame-time overlay
-  - a "Deck" quality preset at 1280×800
+  - an in-game frame-time overlay (F3) that shows GPU time from timestamp queries; `--gpu-report` prints average/p95/max and a per-pass breakdown at exit
+  - a "Deck" quality preset at 1280×800 (F4 or Select toggles it, `--quality deck` starts in it): one shadow cascade at 1024², no point-light shadows, no MSAA, a shorter bloom chain
   - a target of about 2–3 ms GPU frame time on the dev RTX 2080 Ti in that preset (roughly 8× the Deck's GPU)
   - content limits: ≤2 shadow-casting lights per scene; lanterns are emissive plus *unshadowed* point lights with a capped count; capped particle counts and draw calls
 - Test on a real Deck before launch.
@@ -58,7 +58,8 @@ Items, shops, event spaces, bonus stars, last-5-turns events, **duels (1v1, need
 ### 3.4 Players, bots and controllers
 
 - **One controller per player.** The game is designed for gamepads; keyboard input is for development only.
-- **Joining:** on the join screen, each controller that presses A takes the next seat and stays bound to it. Online, each machine joins its local controllers the same way.
+- **Joining:** on the join screen, each controller that presses A takes the next seat and stays bound to it. Left/right picks a character (each character once), B leaves, X cycles the bots' difficulty, up/down sets the board length, and Start begins. Online, each machine joins its local controllers the same way.
+- **Screens:** title (board game / free play / quit) → join → board ↔ minigames → results → title. Free play goes join → minigame picker → minigame, and B after a result returns to the picker.
 - **Bots** fill empty seats, set by the host, with 2–3 difficulty levels. A bot is a **virtual controller**: a pure function `bot_input(state, seat, difficulty) -> Input` whose output is sent exactly like a human's. The simulation never knows a seat is a bot.
 - **Controller disconnects** are local events and never break the network session. The setting "Pause when a controller disconnects" defaults to **Off**:
   - **Off:** that seat's input goes neutral and a "🎮✕ P2" badge appears.
@@ -89,7 +90,9 @@ crates/
   minigames/*   # no Bevy. One crate per minigame: State: Clone + Hash, step(), bot_input()
   registry/     # no Bevy. minigame-registry: the list of every minigame, looked up by id
   net/          # (planned) transport layer (UDP now, Steam later), ggrs driver, board-phase protocol
-  game/         # Bevy 0.20: rendering, interpolation, UI, audio, input, menus
+  game/         # Bevy 0.20: rendering, interpolation, UI, audio, input, menus.
+                #   flow.rs (screen states), runner.rs (input + minigame driver), board_view.rs,
+                #   menus.rs, one view module per minigame, particles.rs, quality.rs, i18n.rs
   tools/        # headless CLI: `check` (all quality bars), `bots` (bot-only matches), `board` (bot-only board games)
 ```
 
@@ -156,7 +159,7 @@ Determinism rules for simulation code:
   - later experiment: music made in Reaper with your VSTs
   - playback through `bevy_kira_audio`
   - check Steam's rules on AI-generated content before using any
-- **Localization:** English only at launch, but every UI string goes through Fluent keys from day one.
+- **Localization:** English only at launch, but every UI string goes through Fluent keys from day one: `crates/game/locales/en/main.ftl`, read with `tr!("key", name = value)`. Minigame names are keyed by registry id (`minigame-<id>`).
 
 ### 4.7 Dependencies (as of 2026-10-20)
 
@@ -166,7 +169,7 @@ Determinism rules for simulation code:
 | Rollback | ggrs 0.13 | Core only, no `bevy_ggrs` |
 | Particles | bevy_hanabi | Use git main until the 0.20 release |
 | Blender components | bevy_skein | Use git main until the 0.20 release. **Not** the crates.io `skein` crate, which is an unrelated hash crate |
-| Input | leafwing-input-manager 0.22 or bevy_enhanced_input | Pick during the vertical slice |
+| Input | none for now: our own small mapper | [ADR 0007](adr/0007-input-mapping.md); revisit (bevy_enhanced_input first) when rebinding arrives |
 | Audio | bevy_kira_audio 0.27 | |
 | Steam (later) | steamworks 0.13 | Used directly, not through bevy-steamworks |
 | Avoid | matchbox (stalled, incompatible with ggrs 0.13), Blenvy (abandoned) | |
@@ -198,5 +201,4 @@ A minigame is **done** when it passes all three:
 - what the signature twist will be, if any
 - the details of battles, items and shops
 - whether a composer is hired for launch
-- the input crate choice
 - the unlock and progression system

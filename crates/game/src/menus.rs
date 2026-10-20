@@ -289,6 +289,7 @@ fn spawn_title(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     commands.init_resource::<TitleMenu>();
+    commands.remove_resource::<Lobby>();
     spawn_backdrop(
         &mut commands,
         &mut meshes,
@@ -352,7 +353,7 @@ fn title_menu(
 // Join
 
 /// Who has joined, on what device, as which character; and the session settings.
-#[derive(Resource)]
+#[derive(Resource, Clone)]
 pub struct Lobby {
     joined: [Option<(Device, Character)>; MAX_PLAYERS],
     bots: Difficulty,
@@ -440,8 +441,10 @@ fn spawn_join(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    existing: Option<Res<Lobby>>,
 ) {
-    let lobby = Lobby::default();
+    // Coming back from the free-play picker keeps everyone joined; the title starts afresh.
+    let lobby = existing.map(|l| l.clone()).unwrap_or_default();
     spawn_backdrop(
         &mut commands,
         &mut meshes,
