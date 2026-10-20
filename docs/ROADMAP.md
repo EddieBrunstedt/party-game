@@ -2,17 +2,25 @@
 
 The single source of truth for **what's done and what's next**. Work items top to bottom. Each item is done when its **Done when** line holds. Then tick it, note anything surprising under it, and update `DESIGN.md` if the design changed.
 
+## Minigame completion levels
+
+- **Playable:** rules complete and fun, bots at all difficulties, `check_all` passing, and placeholder visuals that always read clearly (who is who, what just happened, who is winning). New minigames stop here.
+- **Polished:** real characters and animations, sound, particles and juice, an instruction card, Fluent strings. This is done in batched polish passes once the shared systems (characters, audio, particles, UI framework) exist, so nothing is built twice.
+
+A fun problem found at the playable stage gets fixed straight away; polish won't rescue a dull game.
+
 ## Milestone 1: Vertical slice (couch only, bots fill seats)
 
 - [x] **Workspace and simulation core.** `sim-core`, `sim-check`, `tools`, the `Minigame` trait, `Run<M>` (pause-as-input, controller loss), stable checksums, PCG RNG with SplitMix seeding.
 - [x] **Quick Draw.** Simulation, bots, all quality bars, Bevy view (lantern folk placeholders, bloom, fireflies, HUD, camera that fits the window).
-- [ ] **Playtest Quick Draw (human).** The developer plays with real gamepads and reports on feel, timing and readability.
-  - Done when: feedback is collected and any changes from it are made.
-- [ ] **Lantern Push.** Sumo knockoff on a shrinking platform. Introduces:
+- [x] **Playtest Quick Draw (human).** Played with a PS5 controller: "felt good", no changes needed at the playable level.
+  - Polish is deferred to the polish pass.
+  - Note: a "connected" gamepad that sends no button presses is usually a flaky cable. `--log-input` and the kernel log (`journalctl -k`, look for error -71) will show it.
+- [ ] **Lantern Push** (to playable). Sumo knockoff on a shrinking platform. Introduces:
   - custom deterministic physics in `sim-core` (circles, knockback, ring-out) with `f32` + `math` wrappers + `hash_f32`
   - render interpolation between ticks in `game`
   - Done when: `check_all` passes, bots at all difficulties produce close matches, and screenshots show a readable arena.
-- [ ] **Firefly Catch.** Chase fleeing fireflies. Introduces:
+- [ ] **Firefly Catch** (to playable). Chase fleeing fireflies. Introduces:
   - spawning and despawning objects inside the simulation with stable IDs
   - GPU particles (`bevy_hanabi` from git main until its 0.20 release)
   - Done when: same bar as Lantern Push.
@@ -24,6 +32,8 @@ The single source of truth for **what's done and what's next**. Work items top t
   - Done when: the game launches into the title screen and a whole session runs without CLI flags.
 - [ ] **Four lantern-folk characters.** Modelled in Blender via MCP on one shared rig with shared animations (idle, hop, celebrate, slump), exported as glTF, replacing the code-built placeholders.
   - Done when: all four load in-game from `.glb` and animate.
+- [ ] **Polish pass 1.** Bring the three minigames and the board to the **polished** level using the new characters, plus audio (`bevy_kira_audio`, CC0/sfxr-style SFX) and `bevy_hanabi` particles.
+  - Done when: every minigame and the board meet the polished definition, and a full game has been playtested by humans.
 - [ ] **Steam Deck quality preset.** A "Deck" preset at 1280×800 with the content budgets from DESIGN.md §2, toggleable in-game.
   - Done when: the preset holds ~2–3 ms GPU frame time on the dev RTX 2080 Ti in the busiest scene.
 - [ ] **GitLab CI.** `cargo test --workspace` and `cargo clippy --workspace --all-targets -D warnings` on every push.
