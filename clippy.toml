@@ -1,0 +1,2 @@
+# Bevy systems take their data as parameters, so they often need more than the default 7.
+too-many-arguments-threshold = 10

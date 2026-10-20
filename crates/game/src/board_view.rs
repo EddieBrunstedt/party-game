@@ -12,13 +12,16 @@ use bevy::prelude::*;
 use sim_board::{Awaiting, Board, Decision, Event, Game, Intent, SpaceId, SpaceKind, bot_intent};
 use sim_core::{Button, Format, MAX_PLAYERS, Outcome, Seat};
 
+use crate::characters::Roster;
 use crate::flow::{AppState, MinigameLaunch, MinigameResult, Origin};
+use crate::i18n::{bot_tag, names};
 use crate::palette::{LANTERN_WARM, MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
 use crate::runner::{Controller, RunSetup, SeatInputs, Seats};
 use crate::scenery::{
     emissive_material, night_camera, noise, spawn_fireflies, spawn_lantern_folk,
     spawn_paper_lantern,
 };
+use crate::tr;
 
 pub struct BoardViewPlugin;
 
@@ -392,6 +395,7 @@ fn spawn_scene(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     session: Res<BoardSession>,
+    roster: Res<Roster>,
 ) {
     let scope = DespawnOnExit(AppState::Board);
     commands.insert_resource(ClearColor(NIGHT_SKY));
@@ -507,6 +511,7 @@ fn spawn_scene(
             &mut materials,
             AppState::Board,
             seat,
+            roster.of(seat),
             Transform::from_translation(pos).with_scale(Vec3::splat(PAWN_SCALE)),
         );
         commands.entity(folk.root).insert(Pawn { seat, yaw: 0.0 });
@@ -998,7 +1003,6 @@ fn spawn_hud(mut commands: Commands, session: Res<BoardSession>) {
 }
 
 /// Over-pawn numbers and coin popups follow their spot in the world.
-#[allow(clippy::too_many_arguments)]
 fn update_labels(
     mut commands: Commands,
     time: Res<Time>,
@@ -1112,21 +1116,9 @@ fn update_labels(
     }
 }
 
+/// A minigame's display name, from its registry id.
 pub fn minigame_title(id: &str) -> String {
-    id.split('-')
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                Some(first) => first.to_uppercase().chain(chars).collect::<String>(),
-                None => String::new(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn names(seats: impl Iterator<Item = Seat>) -> String {
-    seats.map(seat_label).collect::<Vec<_>>().join(" & ")
+    tr!(&format!("minigame-{id}"))
 }
 
 pub fn format_text(format: &Format, players: impl Iterator<Item = Seat> + Clone) -> String {
@@ -1138,9 +1130,9 @@ pub fn format_text(format: &Format, players: impl Iterator<Item = Seat> + Clone)
         )
     };
     match format {
-        Format::FreeForAll => "Free-for-all".into(),
+        Format::FreeForAll => tr!("format-free-for-all"),
         Format::OneVsThree { .. } | Format::TwoVsTwo { .. } | Format::Duel { .. } => {
-            format!("{}  vs  {}", side(0), side(1))
+            tr!("format-versus", left = side(0), right = side(1))
         }
     }
 }
@@ -1148,97 +1140,85 @@ pub fn format_text(format: &Format, players: impl Iterator<Item = Seat> + Clone)
 fn banner_text(session: &BoardSession, seats: &Seats) -> (String, String) {
     let shown = &session.shown;
     let players = session.game.players();
-    let who = |seat: Seat| {
-        if seats.is_bot(seat) {
-            format!("{} (bot)", seat_label(seat))
-        } else {
-            seat_label(seat)
-        }
-    };
+    let who = |seat: Seat| format!("{}{}", seat_label(seat), bot_tag(seats.is_bot(seat)));
+    let none = String::new;
     if let Some(playing) = &session.playing {
-        match &playing.event {
-            Event::TurnOrderRolled { seat, value } => {
-                return (
-                    "Turn order".into(),
-                    format!("{} rolled {value}", who(*seat)),
-                );
-            }
+        let banner = match &playing.event {
+            Event::TurnOrderRolled { seat, value } => Some((
+                tr!("board-turn-order"),
+                tr!("board-rolled", player = who(*seat), value = *value as u32),
+            )),
             Event::TurnOrderDecided { order } => {
-                return ("Turn order".into(), names(order.iter().copied()));
+                Some((tr!("board-turn-order"), names(order.iter().copied())))
             }
-            Event::RoundStarted { round } => {
-                return (
-                    format!("Round {round}"),
-                    format!("of {}", session.game.rules().rounds),
-                );
-            }
-            Event::TurnStarted { seat } => {
-                return (format!("{}'s turn", who(*seat)), String::new());
-            }
+            Event::RoundStarted { round } => Some((
+                tr!("board-round", round = *round),
+                tr!("board-round-of", rounds = session.game.rules().rounds),
+            )),
+            Event::TurnStarted { seat } => Some((tr!("board-turn", player = who(*seat)), none())),
             Event::StarBought { seat, .. } => {
-                return (format!("{} got a Star!", seat_label(*seat)), String::new());
+                Some((tr!("board-star-bought", player = seat_label(*seat)), none()))
             }
-            Event::StarCannotAfford { price, .. } => {
-                return (
-                    "Not enough coins".into(),
-                    format!("A Star costs {price} coins"),
-                );
-            }
-            Event::StarMoved { .. } => return ("The Star moves!".into(), String::new()),
-            Event::MinigameChosen { id, format, .. } => {
-                return (
-                    minigame_title(id),
-                    format_text(format, players.seats().collect::<Vec<_>>().into_iter()),
-                );
-            }
-            Event::MinigameFinished { outcome, .. } => {
-                return (
-                    format!("{} won the minigame!", names(outcome.winners())),
-                    format!("+{} coins each", session.game.rules().minigame_prize),
-                );
-            }
-            _ => {}
+            Event::StarCannotAfford { price, .. } => Some((
+                tr!("board-star-too-poor"),
+                tr!("board-star-costs", price = *price),
+            )),
+            Event::StarMoved { .. } => Some((tr!("board-star-moves"), none())),
+            Event::MinigameChosen { id, format, .. } => Some((
+                minigame_title(id),
+                format_text(format, players.seats().collect::<Vec<_>>().into_iter()),
+            )),
+            Event::MinigameFinished { outcome, .. } => Some((
+                tr!("board-minigame-won", players = names(outcome.winners())),
+                tr!("board-prize", coins = session.game.rules().minigame_prize),
+            )),
+            _ => None,
+        };
+        if let Some(banner) = banner {
+            return banner;
         }
     }
     if let Some(standings) = shown.final_standings {
         let winners: Vec<Seat> = standings.winners().collect();
-        let verb = if winners.len() == 1 { "wins" } else { "win" };
         return (
-            format!("{} {verb} the game!", names(winners.into_iter())),
-            "Press A to see the results".into(),
+            tr!(
+                "board-game-won",
+                players = names(winners.iter().copied()),
+                count = winners.len() as u32
+            ),
+            tr!("board-see-results"),
         );
     }
     if !session.idle() {
-        return (String::new(), String::new());
+        return (none(), none());
     }
     match session.game.awaiting() {
-        Awaiting::Intent { seat, decision } if !seats.is_bot(seat) => match decision {
-            Decision::TurnOrderRoll => (
-                "Roll for turn order!".into(),
-                format!("{}: press A to hit the die", seat_label(seat)),
-            ),
-            Decision::Roll => (
-                String::new(),
-                format!("{}: press A to roll", seat_label(seat)),
-            ),
-            Decision::ChoosePath { .. } => (
-                "Which way?".into(),
-                format!("{}: point the stick, then press A", seat_label(seat)),
-            ),
-            Decision::BuyStar { price } => (
-                format!("Buy the Star for {price} coins?"),
-                "A: yes   B: no".into(),
-            ),
-        },
+        Awaiting::Intent { seat, decision } if !seats.is_bot(seat) => {
+            let player = seat_label(seat);
+            match decision {
+                Decision::TurnOrderRoll => (
+                    tr!("board-roll-for-order"),
+                    tr!("board-hit-die", player = player),
+                ),
+                Decision::Roll => (none(), tr!("board-press-roll", player = player)),
+                Decision::ChoosePath { .. } => (
+                    tr!("board-which-way"),
+                    tr!("board-point-stick", player = player),
+                ),
+                Decision::BuyStar { price } => {
+                    (tr!("board-buy-star", price = price), tr!("board-yes-no"))
+                }
+            }
+        }
         Awaiting::Intent {
             decision: Decision::BuyStar { price },
             ..
-        } => (format!("Buy the Star for {price} coins?"), String::new()),
+        } => (tr!("board-buy-star", price = price), none()),
         Awaiting::Intent {
             decision: Decision::TurnOrderRoll,
             ..
-        } => ("Roll for turn order!".into(), String::new()),
-        _ => (String::new(), String::new()),
+        } => (tr!("board-roll-for-order"), none()),
+        _ => (none(), none()),
     }
 }
 
@@ -1252,24 +1232,29 @@ fn update_hud(
     let shown = &session.shown;
     for (hud, mut text) in &mut texts {
         text.0 = match *hud {
-            HudText::Round if shown.round > 0 => {
-                format!("Round {} / {}", shown.round, session.game.rules().rounds)
-            }
+            HudText::Round if shown.round > 0 => tr!(
+                "board-round-counter",
+                round = shown.round,
+                rounds = session.game.rules().rounds
+            ),
             HudText::Round => String::new(),
             HudText::Banner => title.clone(),
             HudText::SubBanner => subtitle.clone(),
             HudText::SeatPanel(seat) => {
-                let who = if seats.is_bot(seat) { " (bot)" } else { "" };
+                let who = bot_tag(seats.is_bot(seat));
                 let place = shown
                     .final_standings
                     .and_then(|o| o.placement[seat.index()])
                     .map(|p| format!("   #{p}"))
                     .unwrap_or_default();
                 format!(
-                    "{}{who}{place}\nStars {}   Coins {}",
+                    "{}{who}{place}\n{}",
                     seat_label(seat),
-                    shown.stars[seat.index()],
-                    shown.coins[seat.index()]
+                    tr!(
+                        "board-panel",
+                        stars = shown.stars[seat.index()],
+                        coins = shown.coins[seat.index()]
+                    )
                 )
             }
         };
@@ -1380,6 +1365,9 @@ mod tests {
     #[test]
     fn minigame_titles_read_nicely() {
         assert_eq!(minigame_title("lantern-push"), "Lantern Push");
+        for entry in minigame_registry::ALL {
+            assert_ne!(minigame_title(entry.id), format!("minigame-{}", entry.id));
+        }
         assert_eq!(minigame_title("quick-draw"), "Quick Draw");
     }
 

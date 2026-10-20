@@ -41,6 +41,47 @@ pub fn tr_args(key: &str, args: &[(&str, FluentValue)]) -> String {
         .into_owned()
 }
 
+/// Players' labels joined for a sentence: "P1 & P3".
+pub fn names(seats: impl Iterator<Item = sim_core::Seat>) -> String {
+    seats
+        .map(crate::palette::seat_label)
+        .collect::<Vec<_>>()
+        .join(" & ")
+}
+
+/// "P1 wins!" / "P1 & P3 win!"
+pub fn winners(seats: &[sim_core::Seat]) -> String {
+    crate::tr!(
+        "winners",
+        names = names(seats.iter().copied()),
+        count = seats.len() as u32
+    )
+}
+
+/// The banner every minigame shows while halted, if it is.
+pub fn halted_banner<M: sim_core::Minigame>(run: &sim_core::Run<M>) -> Option<(String, String)> {
+    if run.waiting_for_controller() {
+        let lost = names(run.players.seats().filter(|s| run.controller_lost(*s)));
+        Some((
+            crate::tr!("controller-disconnected"),
+            crate::tr!("controller-reconnect", players = lost),
+        ))
+    } else if run.paused {
+        Some((crate::tr!("paused"), crate::tr!("paused-resume")))
+    } else {
+        None
+    }
+}
+
+/// " (bot)" after a bot's label.
+pub fn bot_tag(is_bot: bool) -> String {
+    if is_bot {
+        crate::tr!("bot-tag")
+    } else {
+        String::new()
+    }
+}
+
 /// `tr!("key")` or `tr!("key", name = value, ...)`.
 #[macro_export]
 macro_rules! tr {

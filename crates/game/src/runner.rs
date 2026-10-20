@@ -20,12 +20,31 @@ const AUTO_CONTINUE_TICKS: u32 = 240;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Controller {
-    /// `gamepad` is the index into connected gamepads, in connection order.
-    Human {
-        gamepad: usize,
-        keyboard: bool,
-    },
+    Human { gamepad: Pad, keyboard: bool },
     Bot(Difficulty),
+}
+
+/// Which gamepad a human seat reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pad {
+    None,
+    /// The nth connected gamepad, in connection order (CLI launches, before anyone has joined).
+    Nth(usize),
+    /// The exact gamepad that joined this seat on the join screen.
+    Bound(Entity),
+}
+
+/// The gamepad a seat reads, if it's connected.
+pub fn find_pad<'a>(pad: Pad, gamepads: &'a Query<(Entity, &Gamepad)>) -> Option<&'a Gamepad> {
+    match pad {
+        Pad::None => None,
+        Pad::Bound(entity) => gamepads.get(entity).ok().map(|(_, pad)| pad),
+        Pad::Nth(n) => {
+            let mut pads: Vec<_> = gamepads.iter().collect();
+            pads.sort_by_key(|(entity, _)| *entity);
+            pads.get(n).map(|(_, pad)| *pad)
+        }
+    }
 }
 
 /// Who controls each seat. `None` means the seat is not playing.
@@ -89,11 +108,11 @@ impl<M: Minigame> ActiveRun<M> {
     }
 
     /// What pressing A does once the game is over, or nothing while it's too soon to press.
-    pub fn continue_prompt(&self) -> &'static str {
+    pub fn continue_prompt(&self) -> String {
         match (self.can_restart(), self.origin) {
-            (false, _) => "",
-            (true, Origin::FreePlay) => "Press A to play again",
-            (true, Origin::Board) => "Press A to continue",
+            (false, _) => String::new(),
+            (true, Origin::FreePlay) => crate::tr!("minigame-again"),
+            (true, Origin::Board) => crate::tr!("minigame-continue"),
         }
     }
 }
@@ -161,11 +180,10 @@ fn read_seat_inputs(
     gamepads: Query<(Entity, &Gamepad)>,
     mut inputs: ResMut<SeatInputs>,
 ) {
-    let pads = connected_gamepads(&gamepads);
     let previous = inputs.0.current;
     let current = std::array::from_fn(|i| match seats.0[i] {
         Some(Controller::Human { gamepad, keyboard }) => {
-            human_input(keyboard, pads.get(gamepad).copied(), &keys, 0)
+            human_input(keyboard, find_pad(gamepad, &gamepads), &keys, 0)
         }
         _ => Input::default(),
     });
@@ -228,19 +246,12 @@ fn log_gamepad_connections(mut events: MessageReader<GamepadConnectionEvent>) {
     }
 }
 
-fn connected_gamepads<'a>(gamepads: &'a Query<(Entity, &Gamepad)>) -> Vec<&'a Gamepad> {
-    let mut pads: Vec<_> = gamepads.iter().collect();
-    pads.sort_by_key(|(entity, _)| *entity);
-    pads.into_iter().map(|(_, pad)| pad).collect()
-}
-
 fn latch_presses(
     seats: Res<Seats>,
     keys: Res<ButtonInput<KeyCode>>,
     gamepads: Query<(Entity, &Gamepad)>,
     mut latch: ResMut<PressLatch>,
 ) {
-    let pads = connected_gamepads(&gamepads);
     for seat in Seat::ALL {
         let Some(Controller::Human { gamepad, keyboard }) = seats.0[seat.index()] else {
             continue;
@@ -253,7 +264,7 @@ fn latch_presses(
                 }
             }
         }
-        if let Some(pad) = pads.get(gamepad) {
+        if let Some(pad) = find_pad(gamepad, &gamepads) {
             for (pad_button, button) in GAMEPAD_BUTTONS {
                 if pad.just_pressed(pad_button) {
                     pressed.set(button, true);
@@ -322,7 +333,6 @@ fn step_run<M: Minigame>(
     mut latch: ResMut<PressLatch>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
-    let pads = connected_gamepads(&gamepads);
     let latched = std::mem::take(&mut latch.0);
 
     if let Some(outcome) = active.run.outcome() {
@@ -332,6 +342,14 @@ fn step_run<M: Minigame>(
             seats.is_human(seat)
                 && latched[seat.index()] & Input::default().with(Button::A).buttons != 0
         });
+        let human_pressed_b = Seat::ALL.into_iter().any(|seat| {
+            seats.is_human(seat)
+                && latched[seat.index()] & Input::default().with(Button::B).buttons != 0
+        });
+        if active.origin == Origin::FreePlay && active.can_restart() && human_pressed_b {
+            next_state.set(AppState::Pick);
+            return;
+        }
         let no_humans = Seat::ALL.into_iter().all(|seat| !seats.is_human(seat));
         let carry_on = (active.can_restart() && human_pressed_a)
             || (no_humans && active.finished_ticks >= AUTO_CONTINUE_TICKS);
@@ -353,7 +371,7 @@ fn step_run<M: Minigame>(
             M::bot_input(&active.run.game, Seat(i as u8), difficulty)
         }
         Some(Controller::Human { gamepad, keyboard }) => {
-            human_input(keyboard, pads.get(gamepad).copied(), &keys, latched[i])
+            human_input(keyboard, find_pad(gamepad, &gamepads), &keys, latched[i])
         }
     });
     active.previous = active.run.game.clone();

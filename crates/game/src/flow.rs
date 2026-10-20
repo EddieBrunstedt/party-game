@@ -9,8 +9,9 @@ use crate::runner::RunSetup;
 pub enum AppState {
     #[default]
     Title,
-    #[allow(dead_code)] // The join screen comes with the Game flow item.
     Join,
+    /// Free play: choose a minigame and format.
+    Pick,
     Board,
     Minigame,
     Results,
@@ -36,3 +37,13 @@ pub struct MinigameLaunch {
 /// A board minigame's result, left for the board to collect.
 #[derive(Resource, Debug, Clone, Copy)]
 pub struct MinigameResult(pub Outcome);
+
+/// Logs every screen change, so headless runs leave a trail of where the session went.
+pub fn log_transitions(mut transitions: MessageReader<StateTransitionEvent<AppState>>) {
+    for transition in transitions.read() {
+        info!(
+            "screen: {:?} -> {:?}",
+            transition.exited, transition.entered
+        );
+    }
+}

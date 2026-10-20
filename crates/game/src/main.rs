@@ -1,10 +1,11 @@
 mod board_view;
+mod characters;
 mod dev;
 mod firefly_catch;
 mod flow;
-#[allow(dead_code)] // UI strings move to Fluent keys in the Game flow item.
 mod i18n;
 mod lantern_push;
+mod menus;
 mod minigames;
 mod palette;
 mod particles;
@@ -21,7 +22,7 @@ use clap::{Parser, ValueEnum};
 use sim_core::{Difficulty, Format, PlayerSetup, RunConfig, Seat, TICK_HZ};
 
 use flow::{AppState, MinigameLaunch, Origin};
-use runner::{Controller, RunSetup, Seats};
+use runner::{Controller, Pad, RunSetup, Seats};
 use sim_board::{Board, Game, Rules};
 
 /// The display title. This is the only place the game's name appears in code.
@@ -31,10 +32,12 @@ pub const GAME_TITLE: &str = "Party Game";
 #[derive(Parser, Clone)]
 #[command(name = "game")]
 struct Cli {
-    /// Free play: jump straight into this minigame (e.g. quick-draw, lantern-push).
-    /// Without it, a board game starts.
+    /// Free play: skip the menus and jump straight into this minigame (e.g. quick-draw).
     #[arg(long)]
     minigame: Option<String>,
+    /// Skip the menus and start a board game with these seats.
+    #[arg(long)]
+    board: bool,
     /// Board game length in rounds (default: the standard rules).
     #[arg(long)]
     rounds: Option<u32>,
@@ -59,6 +62,12 @@ struct Cli {
     screenshot_at: Vec<f32>,
     #[arg(long, default_value = "screenshots")]
     screenshot_dir: PathBuf,
+    /// Press a key at a time after start, as SECS:KEY (repeatable), e.g. `--press 3:Space`.
+    #[arg(long = "press", value_parser = dev::parse_key_press)]
+    press: Vec<(f32, KeyCode)>,
+    /// Press a key every SECS seconds, as SECS:KEY (repeatable).
+    #[arg(long = "press-every", value_parser = dev::parse_key_press)]
+    press_every: Vec<(f32, KeyCode)>,
     /// Log every gamepad button press (diagnoses controller mappings).
     #[arg(long)]
     log_input: bool,
@@ -122,7 +131,7 @@ fn main() {
     for (i, seat) in seats.iter_mut().enumerate().take(players) {
         *seat = Some(if i < humans {
             Controller::Human {
-                gamepad: i,
+                gamepad: Pad::Nth(i),
                 keyboard: i == 0,
             }
         } else {
@@ -149,12 +158,14 @@ fn main() {
     }))
     .insert_resource(Time::<Fixed>::from_hz(TICK_HZ as f64))
     .insert_resource(Seats(seats))
+    .init_resource::<characters::Roster>()
     .add_plugins((perf::PerfOverlayPlugin, scenery::SceneryPlugin));
 
     app.add_plugins((
         runner::InputPlugin,
         minigames::MinigamesPlugin,
         board_view::BoardViewPlugin,
+        menus::MenusPlugin,
         particles::ParticlesPlugin,
     ));
     match &cli.minigame {
@@ -171,22 +182,35 @@ fn main() {
             })
             .insert_state(AppState::Minigame);
         }
-        None => {
+        None if cli.board => {
             let mut rules = Rules::default();
             if let Some(rounds) = cli.rounds {
                 rules.rounds = rounds.max(1);
             }
-            let shown: Vec<_> = minigame_registry::ALL
-                .iter()
-                .filter(|entry| minigames::SHOWN.contains(&entry.id))
-                .copied()
-                .collect();
-            let game = Game::new(Board::meadow(), rules, players, seed, &shown);
+            let game = Game::new(
+                Board::meadow(),
+                rules,
+                players,
+                seed,
+                &minigames::shown_entries(),
+            );
             app.insert_resource(board_view::BoardSession::new(game))
                 .insert_state(AppState::Board);
         }
+        // The real start: title, then the join screen binds controllers to seats.
+        None => {
+            app.insert_resource(Seats([None; 4]))
+                .insert_state(AppState::Title);
+        }
     }
 
+    app.add_systems(Update, flow::log_transitions);
+    if !cli.press.is_empty() || !cli.press_every.is_empty() {
+        app.add_plugins(dev::ScriptedKeysPlugin {
+            once: cli.press,
+            every: cli.press_every,
+        });
+    }
     if cli.log_input {
         app.add_plugins(dev::InputLogPlugin);
     }

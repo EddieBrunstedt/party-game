@@ -13,13 +13,16 @@ use minigame_firefly_catch::{
 use sim_core::physics::Vec2 as SimVec2;
 use sim_core::{Format, Seat, TICK_HZ};
 
+use crate::characters::{Character, Roster};
 use crate::flow::AppState;
+use crate::i18n::{self, bot_tag, halted_banner, names};
 use crate::palette::{LANTERN_WARM, MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
 use crate::particles::{self, Effects, hdr};
 use crate::runner::{ActiveRun, MinigameSet, Seats};
 use crate::scenery::{
     emissive_material, night_camera, noise, spawn_lantern_folk, spawn_paper_lantern,
 };
+use crate::tr;
 
 pub struct FireflyCatchViewPlugin;
 
@@ -102,6 +105,7 @@ fn spawn_scene(
     mut materials: ResMut<Assets<StandardMaterial>>,
     effects: Res<Effects>,
     active: Res<ActiveRun<FireflyCatch>>,
+    roster: Res<Roster>,
 ) {
     commands.insert_resource(ClearColor(NIGHT_SKY));
     commands.insert_resource(GlobalAmbientLight {
@@ -223,7 +227,14 @@ fn spawn_scene(
 
     let game = &active.run.game;
     for seat in game.setup.seats() {
-        spawn_player(&mut commands, &mut meshes, &mut materials, game, seat);
+        spawn_player(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            game,
+            seat,
+            roster.of(seat),
+        );
     }
 }
 
@@ -243,6 +254,7 @@ fn spawn_player(
     materials: &mut Assets<StandardMaterial>,
     game: &State,
     seat: Seat,
+    character: Character,
 ) {
     let player = &game.players[seat.index()];
     let folk = spawn_lantern_folk(
@@ -251,6 +263,7 @@ fn spawn_player(
         materials,
         AppState::Minigame,
         seat,
+        character,
         Transform::from_translation(world(player.body.pos))
             .with_scale(Vec3::splat(PLAYER_RADIUS / 0.5)),
     );
@@ -695,22 +708,11 @@ fn spawn_hud(mut commands: Commands, active: Res<ActiveRun<FireflyCatch>>) {
         });
 }
 
-fn names(seats: impl Iterator<Item = Seat>) -> String {
-    seats.map(seat_label).collect::<Vec<_>>().join(" & ")
-}
-
 fn banner_text(active: &ActiveRun<FireflyCatch>) -> (String, String) {
     let run = &active.run;
     let game = &run.game;
-    if run.waiting_for_controller() {
-        let lost = names(run.players.seats().filter(|s| run.controller_lost(*s)));
-        return (
-            "Controller disconnected".into(),
-            format!("Reconnect {lost}'s controller"),
-        );
-    }
-    if run.paused {
-        return ("Paused".into(), "Press Start to resume".into());
+    if let Some(banner) = halted_banner(run) {
+        return banner;
     }
     match game.phase {
         Phase::Intro { t } => {
@@ -720,14 +722,14 @@ fn banner_text(active: &ActiveRun<FireflyCatch>) -> (String, String) {
             } else {
                 let rule = match game.format {
                     Format::OneVsThree { solo } => {
-                        format!("{}'s catches count triple!", seat_label(solo))
+                        tr!("firefly-catch-goal-solo", player = seat_label(solo))
                     }
-                    Format::TwoVsTwo { .. } => "Team scores add up!".into(),
-                    _ => "Most fireflies wins! Golden ones are worth 3.".into(),
+                    Format::TwoVsTwo { .. } => tr!("firefly-catch-goal-teams"),
+                    _ => tr!("firefly-catch-goal"),
                 };
                 (
-                    "FIREFLY CATCH".into(),
-                    format!("A: swing net   B: dash   {rule}"),
+                    tr!("firefly-catch-title"),
+                    tr!("firefly-catch-controls", goal = rule),
                 )
             }
         }
@@ -736,7 +738,7 @@ fn banner_text(active: &ActiveRun<FireflyCatch>) -> (String, String) {
             let title = if secs <= 5 {
                 secs.to_string()
             } else if (PLAY_SECS - secs) < 1 {
-                "GO!".into()
+                tr!("firefly-catch-go")
             } else {
                 String::new()
             };
@@ -766,11 +768,7 @@ fn banner_text(active: &ActiveRun<FireflyCatch>) -> (String, String) {
         Phase::Finished => {
             let outcome = run.outcome().expect("finished games have an outcome");
             let winners: Vec<Seat> = outcome.winners().collect();
-            let verb = if winners.len() == 1 { "wins" } else { "win" };
-            (
-                format!("{} {verb}!", names(winners.into_iter())),
-                active.continue_prompt().into(),
-            )
+            (i18n::winners(&winners), active.continue_prompt())
         }
     }
 }
@@ -789,16 +787,16 @@ fn update_hud(
             HudText::Banner => title.clone(),
             HudText::SubBanner => subtitle.clone(),
             HudText::SeatPanel(seat) => {
-                let who = if seats.is_bot(seat) { " (bot)" } else { "" };
+                let who = bot_tag(seats.is_bot(seat));
                 let role = match game.format {
-                    Format::OneVsThree { solo } if solo == seat => "  x3",
-                    _ => "",
+                    Format::OneVsThree { solo } if solo == seat => tr!("firefly-catch-triple-tag"),
+                    _ => String::new(),
                 };
                 let player = &game.players[seat.index()];
                 let status = if active.run.controller_lost(seat) {
-                    "controller lost".to_string()
+                    tr!("controller-lost")
                 } else {
-                    format!("{} points", player.score)
+                    tr!("points", points = player.score)
                 };
                 format!("{}{who}{role}\n{status}", seat_label(seat))
             }

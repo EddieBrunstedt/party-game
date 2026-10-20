@@ -6,13 +6,16 @@ use bevy::prelude::*;
 use minigame_quick_draw::{POINTS_TO_WIN, Phase, QuickDraw, Reaction, State};
 use sim_core::{Seat, TICK_HZ};
 
+use crate::characters::{Character, Roster};
 use crate::flow::AppState;
+use crate::i18n::{self, bot_tag, halted_banner, names};
 use crate::palette::{LANTERN_WARM, MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
 use crate::runner::{ActiveRun, MinigameSet, Seats};
 use crate::scenery::{
     emissive_material, night_camera, noise, spawn_fireflies, spawn_lantern_folk,
     spawn_paper_lantern,
 };
+use crate::tr;
 
 pub struct QuickDrawViewPlugin;
 
@@ -55,7 +58,7 @@ struct CameraRig {
 }
 
 #[derive(Component)]
-struct Character {
+struct Contestant {
     seat: Seat,
     base: Vec3,
     head_material: Handle<StandardMaterial>,
@@ -78,6 +81,7 @@ fn spawn_scene(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     active: Res<ActiveRun<QuickDraw>>,
+    roster: Res<Roster>,
 ) {
     commands.insert_resource(ClearColor(NIGHT_SKY));
     commands.insert_resource(GlobalAmbientLight {
@@ -125,6 +129,7 @@ fn spawn_scene(
             &mut meshes,
             &mut materials,
             seat,
+            roster.of(seat),
             Vec3::new(x, 0.0, 1.6),
         );
     }
@@ -254,6 +259,7 @@ fn spawn_character(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     seat: Seat,
+    character: Character,
     base: Vec3,
 ) {
     let folk = spawn_lantern_folk(
@@ -262,9 +268,10 @@ fn spawn_character(
         materials,
         AppState::Minigame,
         seat,
+        character,
         Transform::from_translation(base),
     );
-    commands.entity(folk.root).insert(Character {
+    commands.entity(folk.root).insert(Contestant {
         seat,
         base,
         head_material: folk.head_material,
@@ -319,7 +326,7 @@ const HOP_SECONDS: f32 = 0.35;
 fn animate_characters(
     time: Res<Time>,
     active: Res<ActiveRun<QuickDraw>>,
-    mut characters: Query<(&mut Character, &mut Transform)>,
+    mut characters: Query<(&mut Contestant, &mut Transform)>,
     mut lights: Query<&mut PointLight, Without<LanternLight>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
@@ -487,30 +494,22 @@ fn ms(ticks: u16) -> u32 {
     ticks as u32 * 1000 / TICK_HZ
 }
 
-fn names(seats: impl Iterator<Item = Seat>) -> String {
-    seats.map(seat_label).collect::<Vec<_>>().join(" & ")
-}
-
 fn banner_text(active: &ActiveRun<QuickDraw>) -> (String, String) {
     let run = &active.run;
     let game: &State = &run.game;
-    if run.waiting_for_controller() {
-        let lost = names(run.players.seats().filter(|s| run.controller_lost(*s)));
-        return (
-            "Controller disconnected".into(),
-            format!("Reconnect {lost}'s controller"),
-        );
-    }
-    if run.paused {
-        return ("Paused".into(), "Press Start to resume".into());
+    if let Some(banner) = halted_banner(run) {
+        return banner;
     }
     match game.phase {
         Phase::Intro { .. } => (
-            "QUICK DRAW".into(),
-            format!("Press A the instant the lantern lights. First to {POINTS_TO_WIN} wins!"),
+            tr!("quick-draw-title"),
+            tr!("quick-draw-rules", points = POINTS_TO_WIN as u32),
         ),
-        Phase::Waiting { .. } => ("Wait for it...".into(), format!("Round {}", game.round)),
-        Phase::Drawn { .. } => ("DRAW!".into(), String::new()),
+        Phase::Waiting { .. } => (
+            tr!("quick-draw-wait"),
+            tr!("quick-draw-round", round = game.round as u32),
+        ),
+        Phase::Drawn { .. } => (tr!("quick-draw-draw"), String::new()),
         Phase::RoundOver { .. } => {
             let winners: Vec<Seat> = game
                 .players
@@ -519,21 +518,16 @@ fn banner_text(active: &ActiveRun<QuickDraw>) -> (String, String) {
                 .collect();
             match winners.first().map(|s| game.reactions[s.index()]) {
                 Some(Reaction::Fired { ticks }) => (
-                    format!("{} takes the round!", names(winners.into_iter())),
-                    format!("{} ms", ms(ticks)),
+                    tr!("quick-draw-round-won", players = names(winners.into_iter())),
+                    tr!("quick-draw-ms", ms = ms(ticks)),
                 ),
-                _ => ("Nobody scores".into(), String::new()),
+                _ => (tr!("quick-draw-nobody"), String::new()),
             }
         }
         Phase::Finished => {
             let outcome = run.outcome().expect("finished games have an outcome");
             let winners: Vec<Seat> = outcome.winners().collect();
-            let verb = if winners.len() == 1 { "wins" } else { "win" };
-            let prompt = active.continue_prompt();
-            (
-                format!("{} {verb}!", names(winners.into_iter())),
-                prompt.into(),
-            )
+            (i18n::winners(&winners), active.continue_prompt())
         }
     }
 }
@@ -550,18 +544,18 @@ fn update_hud(
             HudText::Banner => title.clone(),
             HudText::SubBanner => subtitle.clone(),
             HudText::SeatPanel(seat) => {
-                let who = if seats.is_bot(seat) { " (bot)" } else { "" };
+                let who = bot_tag(seats.is_bot(seat));
                 let score = game.scores[seat.index()];
                 let pips: String = (0..POINTS_TO_WIN)
                     .map(|i| if i < score { '#' } else { '-' })
                     .collect();
                 let status = if active.run.controller_lost(seat) {
-                    "controller lost".to_string()
+                    tr!("controller-lost")
                 } else {
                     match game.reactions[seat.index()] {
-                        Reaction::Fired { ticks } => format!("{} ms", ms(ticks)),
-                        Reaction::FalseStart => "FALSE START".into(),
-                        Reaction::TooSlow => "too slow".into(),
+                        Reaction::Fired { ticks } => tr!("quick-draw-ms", ms = ms(ticks)),
+                        Reaction::FalseStart => tr!("quick-draw-false-start"),
+                        Reaction::TooSlow => tr!("quick-draw-too-slow"),
                         Reaction::Waiting => String::new(),
                     }
                 };

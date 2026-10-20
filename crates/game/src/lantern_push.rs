@@ -11,10 +11,13 @@ use minigame_lantern_push::{
 use sim_core::physics::Vec2 as SimVec2;
 use sim_core::{Format, Seat, TICK_HZ};
 
+use crate::characters::{Character, Roster};
 use crate::flow::AppState;
+use crate::i18n::{self, bot_tag, halted_banner};
 use crate::palette::{LANTERN_WARM, MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
 use crate::runner::{ActiveRun, MinigameSet, Seats};
 use crate::scenery::{emissive_material, night_camera, noise, spawn_fireflies, spawn_lantern_folk};
+use crate::tr;
 
 pub struct LanternPushViewPlugin;
 
@@ -110,6 +113,7 @@ fn spawn_scene(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     active: Res<ActiveRun<LanternPush>>,
+    roster: Res<Roster>,
 ) {
     commands.insert_resource(ClearColor(NIGHT_SKY));
     commands.insert_resource(GlobalAmbientLight {
@@ -160,7 +164,14 @@ fn spawn_scene(
 
     let game = &active.run.game;
     for seat in game.players.seats() {
-        spawn_fighter(&mut commands, &mut meshes, &mut materials, game, seat);
+        spawn_fighter(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            game,
+            seat,
+            roster.of(seat),
+        );
     }
 }
 
@@ -295,6 +306,7 @@ fn spawn_fighter(
     materials: &mut Assets<StandardMaterial>,
     game: &State,
     seat: Seat,
+    character: Character,
 ) {
     let fighter = game.fighter(seat);
     let scale = fighter.body.radius / minigame_lantern_push::RADIUS;
@@ -304,6 +316,7 @@ fn spawn_fighter(
         materials,
         AppState::Minigame,
         seat,
+        character,
         Transform::from_translation(world(fighter.body.pos)).with_scale(Vec3::splat(scale)),
     );
     // The disc under each fighter is their collision footprint; it glows when a dash is ready.
@@ -721,17 +734,8 @@ fn spawn_hud(mut commands: Commands, active: Res<ActiveRun<LanternPush>>) {
         });
 }
 
-fn names(seats: impl Iterator<Item = Seat>) -> String {
-    seats.map(seat_label).collect::<Vec<_>>().join(" & ")
-}
-
-fn ordinal(place: u8) -> &'static str {
-    match place {
-        1 => "1st",
-        2 => "2nd",
-        3 => "3rd",
-        _ => "4th",
-    }
+fn ordinal(place: u8) -> String {
+    tr!("place", place = place as u32)
 }
 
 fn clock(ticks: u32) -> String {
@@ -742,15 +746,8 @@ fn clock(ticks: u32) -> String {
 fn banner_text(active: &ActiveRun<LanternPush>) -> (String, String) {
     let run = &active.run;
     let game = &run.game;
-    if run.waiting_for_controller() {
-        let lost = names(run.players.seats().filter(|s| run.controller_lost(*s)));
-        return (
-            "Controller disconnected".into(),
-            format!("Reconnect {lost}'s controller"),
-        );
-    }
-    if run.paused {
-        return ("Paused".into(), "Press Start to resume".into());
+    if let Some(banner) = halted_banner(run) {
+        return banner;
     }
     match game.phase {
         Phase::Intro { t } => {
@@ -760,14 +757,14 @@ fn banner_text(active: &ActiveRun<LanternPush>) -> (String, String) {
             } else {
                 let goal = match game.format {
                     Format::OneVsThree { solo } => {
-                        format!("{} is big and heavy. Three against one!", seat_label(solo))
+                        tr!("lantern-push-goal-solo", player = seat_label(solo))
                     }
-                    Format::TwoVsTwo { .. } => "Knock the other team off!".into(),
-                    _ => "Last one standing wins!".into(),
+                    Format::TwoVsTwo { .. } => tr!("lantern-push-goal-teams"),
+                    _ => tr!("lantern-push-goal"),
                 };
                 (
-                    "LANTERN PUSH".into(),
-                    format!("A: shove   B: brace   {goal}"),
+                    tr!("lantern-push-title"),
+                    tr!("lantern-push-controls", goal = goal),
                 )
             }
         }
@@ -780,17 +777,16 @@ fn banner_text(active: &ActiveRun<LanternPush>) -> (String, String) {
                 .max();
             match fallen {
                 Some((tick, seat)) if since(game, tick) < 1.5 => (
-                    format!("{} is out!", seat_label(seat)),
+                    tr!("lantern-push-out", player = seat_label(seat)),
                     clock(game.ticks_left()),
                 ),
-                _ if game.tick < 45 => ("PUSH!".into(), clock(game.ticks_left())),
+                _ if game.tick < 45 => (tr!("lantern-push-go"), clock(game.ticks_left())),
                 _ => (String::new(), clock(game.ticks_left())),
             }
         }
         Phase::Decided { .. } | Phase::Finished => {
             let outcome = game.outcome.expect("decided games have an outcome");
             let winners: Vec<Seat> = outcome.winners().collect();
-            let verb = if winners.len() == 1 { "wins" } else { "win" };
             let title = if winners.len()
                 == game
                     .players
@@ -798,16 +794,16 @@ fn banner_text(active: &ActiveRun<LanternPush>) -> (String, String) {
                     .filter(|s| game.format.team(*s).is_some())
                     .count()
             {
-                "Everyone survives!".to_string()
+                tr!("lantern-push-everyone")
             } else {
-                format!("{} {verb}!", names(winners.into_iter()))
+                i18n::winners(&winners)
             };
             let prompt = if game.phase == Phase::Finished {
                 active.continue_prompt()
             } else {
-                ""
+                String::new()
             };
-            (title, prompt.into())
+            (title, prompt)
         }
     }
 }
@@ -824,25 +820,25 @@ fn update_hud(
             HudText::Banner => title.clone(),
             HudText::SubBanner => subtitle.clone(),
             HudText::SeatPanel(seat) => {
-                let who = if seats.is_bot(seat) { " (bot)" } else { "" };
+                let who = bot_tag(seats.is_bot(seat));
                 let role = match game.format {
-                    Format::OneVsThree { solo } if solo == seat => "  SOLO",
-                    _ => "",
+                    Format::OneVsThree { solo } if solo == seat => tr!("solo-tag"),
+                    _ => String::new(),
                 };
                 let fighter = game.fighter(seat);
                 let status = if active.run.controller_lost(seat) {
-                    "controller lost".to_string()
+                    tr!("controller-lost")
                 } else if let (Some(outcome), true) = (game.outcome, game.phase != Phase::Playing) {
                     match outcome.placement[seat.index()] {
-                        Some(place) => ordinal(place).to_string(),
+                        Some(place) => ordinal(place),
                         None => String::new(),
                     }
                 } else {
                     match fighter.status {
-                        Status::Standing if fighter.bracing() => "bracing".into(),
-                        Status::Standing if fighter.stun > 0 => "reeling!".into(),
-                        Status::Standing => "standing".into(),
-                        Status::Falling { .. } | Status::Out => "OUT".into(),
+                        Status::Standing if fighter.bracing() => tr!("lantern-push-bracing"),
+                        Status::Standing if fighter.stun > 0 => tr!("lantern-push-reeling"),
+                        Status::Standing => tr!("lantern-push-standing"),
+                        Status::Falling { .. } | Status::Out => tr!("lantern-push-is-out"),
                     }
                 };
                 format!("{}{who}{role}\n{status}", seat_label(seat))
