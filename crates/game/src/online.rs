@@ -1,16 +1,20 @@
 //! The game's side of online play: hosting or joining a session over UDP, and which addresses
 //! friends can reach this machine at. The rules and messages live in the `net` crate.
 
+use std::collections::VecDeque;
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs, UdpSocket};
 
 use bevy::prelude::*;
 use net::board::BoardUpdate;
 use net::lobby::{LobbyAction, LobbyState, PeerId};
-use net::session::{Client, ClientEvent, Host, HostEvent, JoinRefusal, Start};
-use net::{Clock, Endpoint, EndpointConfig, Transport, UdpTransport};
+use net::rollback::SeatOwner;
+use net::session::{Client, ClientEvent, Host, HostEvent, JoinRefusal, Launch, Start};
+use net::{Clock, Endpoint, EndpointConfig, Faults, Faulty, Transport, UdpTransport};
 use sim_board::{Event, Game, Intent, Rejected};
-use sim_core::{Outcome, Seat};
+use sim_core::{MAX_PLAYERS, Outcome, Seat};
 
+use crate::flow::{AppState, MinigameLaunch, Origin};
+use crate::runner::RunSetup;
 use crate::tr;
 
 /// Picked at runtime, so `--net-delay` can wrap UDP in fault injection.
@@ -36,8 +40,13 @@ pub struct OnlinePlugin;
 impl Plugin for OnlinePlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<OnlineEvent>()
+            .init_resource::<NetStats>()
+            .init_resource::<RemoteReady>()
             .add_systems(PreUpdate, poll.run_if(resource_exists::<Online>))
-            .add_systems(Update, leave_when_the_host_does);
+            .add_systems(
+                Update,
+                (leave_when_the_host_does, follow_free_play, note_ready),
+            );
     }
 }
 
@@ -59,6 +68,12 @@ pub enum OnlineEvent {
     },
     /// Host: a client's board went out of step and needs the whole game.
     NeedSnapshot(PeerId),
+    /// A player on another machine read the instruction card.
+    Ready(Seat),
+    /// Client, free play: the host started this minigame.
+    Launch(Launch),
+    /// Client, free play: the host went back to choosing.
+    BackToPicker,
 }
 
 /// Reads the network once a frame, before any screen looks at it.
@@ -66,29 +81,155 @@ fn poll(mut online: ResMut<Online>, mut events: MessageWriter<OnlineEvent>) {
     events.write_batch(online.poll());
 }
 
+/// Players on other machines who have read the instruction card. Kept here rather than on
+/// the card, because a fast reader's "ready" can arrive before this machine opens its card.
+/// The card takes them when it opens and clears them when it closes.
+#[derive(Resource, Default)]
+pub struct RemoteReady(pub [bool; MAX_PLAYERS]);
+
+fn note_ready(mut events: MessageReader<OnlineEvent>, mut ready: ResMut<RemoteReady>) {
+    for event in events.read() {
+        if let OnlineEvent::Ready(seat) = event {
+            ready.0[seat.index()] = true;
+        }
+    }
+}
+
+/// Free play online, on a client: play what the host launches, wait while it picks.
+fn follow_free_play(
+    mut events: MessageReader<OnlineEvent>,
+    mut commands: Commands,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
+    for event in events.read() {
+        match event {
+            OnlineEvent::Launch(launch) => {
+                commands.insert_resource(MinigameLaunch {
+                    id: launch.id.clone(),
+                    setup: RunSetup {
+                        seed: launch.seed,
+                        players: launch.players,
+                        format: launch.format,
+                        config: default(),
+                    },
+                    origin: Origin::FreePlay,
+                });
+                next_state.set(AppState::Minigame);
+            }
+            OnlineEvent::BackToPicker => next_state.set(AppState::Pick),
+            _ => {}
+        }
+    }
+}
+
+/// How the online minigame is going, for the F3 overlay.
+#[derive(Resource, Default)]
+pub struct NetStats {
+    /// Round trip to each other machine, in milliseconds.
+    pings: Vec<(SocketAddr, u128)>,
+    /// Ticks replayed by rollbacks, one entry per tick over the last second.
+    replayed: VecDeque<u32>,
+}
+
+impl NetStats {
+    pub fn record(&mut self, replayed: u32, pings: Vec<(SocketAddr, u128)>) {
+        self.replayed.push_back(replayed);
+        while self.replayed.len() > sim_core::TICK_HZ as usize {
+            self.replayed.pop_front();
+        }
+        self.pings = pings;
+    }
+
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+
+    /// "ping 30/42 ms  rollbacks 12/s (longest 4)", while an online minigame runs.
+    pub fn line(&self) -> Option<String> {
+        if self.replayed.is_empty() {
+            return None;
+        }
+        let pings: Vec<String> = self.pings.iter().map(|(_, ms)| ms.to_string()).collect();
+        let rollbacks = self.replayed.iter().filter(|n| **n > 0).count();
+        let longest = self.replayed.iter().max().copied().unwrap_or(0);
+        Some(format!(
+            "ping {} ms  rollbacks {rollbacks}/s (longest {longest})",
+            if pings.is_empty() {
+                "-".into()
+            } else {
+                pings.join("/")
+            }
+        ))
+    }
+}
+
 /// Wherever this machine is (lobby, board, results), the host leaving ends the session.
 fn leave_when_the_host_does(
     mut events: MessageReader<OnlineEvent>,
     mut commands: Commands,
-    mut next_state: ResMut<NextState<crate::flow::AppState>>,
+    mut next_state: ResMut<NextState<AppState>>,
 ) {
     if events.read().any(|event| *event == OnlineEvent::HostLeft) {
         commands.remove_resource::<Online>();
         commands.remove_resource::<OnlineStart>();
         commands.insert_resource(Notice(tr!("notice-host-left")));
-        next_state.set(crate::flow::AppState::Title);
+        next_state.set(AppState::Title);
     }
 }
 
 impl Online {
-    pub fn host(port: u16, lobby: LobbyState) -> std::io::Result<Self> {
-        let endpoint = endpoint(UdpTransport::bind(("0.0.0.0", port))?, true);
+    pub fn host(port: u16, lobby: LobbyState, settings: &NetSettings) -> std::io::Result<Self> {
+        let endpoint = endpoint(UdpTransport::bind(("0.0.0.0", port))?, true, settings);
         Ok(Self::Host(Host::new(endpoint, lobby)))
     }
 
-    pub fn join(host: SocketAddr) -> std::io::Result<Self> {
-        let endpoint = endpoint(UdpTransport::bind(("0.0.0.0", 0))?, false);
+    pub fn join(host: SocketAddr, settings: &NetSettings) -> std::io::Result<Self> {
+        let endpoint = endpoint(UdpTransport::bind(("0.0.0.0", 0))?, false, settings);
         Ok(Self::Client(Client::connect(endpoint, host)))
+    }
+
+    pub fn is_host(&self) -> bool {
+        matches!(self, Self::Host(_))
+    }
+
+    pub fn endpoint(&self) -> &Endpoint<NetTransport> {
+        match self {
+            Self::Host(host) => host.endpoint(),
+            Self::Client(client) => client.endpoint(),
+        }
+    }
+
+    /// Who sends each seat's input in a minigame, seen from this machine: its own players,
+    /// other machines' players, and the bots and empty seats, which the host sends.
+    pub fn seat_owners(&self) -> Option<[SeatOwner<SocketAddr>; MAX_PLAYERS]> {
+        let me = self.me()?;
+        let lobby = self.lobby()?;
+        let peers = match self {
+            Self::Host(host) => host.clients(),
+            Self::Client(client) => client.peers(),
+        };
+        let owner = |peer: PeerId| {
+            if peer == me {
+                Some(SeatOwner::Local)
+            } else {
+                let addr = peers.iter().find(|(id, _)| *id == peer)?.1;
+                Some(SeatOwner::Remote(addr))
+            }
+        };
+        let mut owners = [SeatOwner::Local; MAX_PLAYERS];
+        for seat in Seat::ALL {
+            let peer = lobby.seats[seat.index()].map_or(PeerId::HOST, |claim| claim.peer);
+            owners[seat.index()] = owner(peer)?;
+        }
+        Some(owners)
+    }
+
+    /// One of this machine's players read the instruction card: tell the others.
+    pub fn ready(&self, seat: Seat) {
+        match self {
+            Self::Host(host) => host.ready(seat),
+            Self::Client(client) => client.ready(seat),
+        }
     }
 
     /// This machine in the session, once the host has welcomed it.
@@ -128,6 +269,7 @@ impl Online {
                         Some(OnlineEvent::Intent { seat, intent })
                     }
                     HostEvent::NeedSnapshot(peer) => Some(OnlineEvent::NeedSnapshot(peer)),
+                    HostEvent::Ready(seat) => Some(OnlineEvent::Ready(seat)),
                 })
                 .collect(),
             Self::Client(client) => client
@@ -140,6 +282,9 @@ impl Online {
                     ClientEvent::Refused(refusal) => Some(OnlineEvent::Refused(refusal)),
                     ClientEvent::HostLeft => Some(OnlineEvent::HostLeft),
                     ClientEvent::Board(update) => Some(OnlineEvent::Board(update)),
+                    ClientEvent::Ready(seat) => Some(OnlineEvent::Ready(seat)),
+                    ClientEvent::Launch(launch) => Some(OnlineEvent::Launch(launch)),
+                    ClientEvent::BackToPicker => Some(OnlineEvent::BackToPicker),
                 })
                 .collect(),
         }
@@ -179,12 +324,20 @@ impl Online {
     }
 }
 
-fn endpoint(udp: UdpTransport, listen: bool) -> Endpoint<NetTransport> {
+fn endpoint(udp: UdpTransport, listen: bool, settings: &NetSettings) -> Endpoint<NetTransport> {
     let config = EndpointConfig {
         game_version: game_version(),
         listen,
     };
-    Endpoint::new(Box::new(udp), Clock::real(), config)
+    let clock = Clock::real();
+    let transport: NetTransport = if settings.faults == Faults::default() {
+        Box::new(udp)
+    } else {
+        // `--net-delay` / `--net-loss`: feel a bad connection on one PC.
+        let seed = udp.local_addr().map_or(0, |a| a.port() as u64);
+        Box::new(Faulty::new(udp, settings.faults, seed, clock.clone()))
+    };
+    Endpoint::new(transport, clock, config)
 }
 
 /// Reads "100.64.1.2", "100.64.1.2:7777" or "pc-name:7777" (names are looked up).
@@ -249,15 +402,20 @@ pub fn refusal_text(refusal: &JoinRefusal) -> String {
     }
 }
 
-/// How this machine hosts, from the command line.
+/// How this machine goes online, from the command line.
 #[derive(Resource, Debug, Clone, Copy)]
 pub struct NetSettings {
     pub port: u16,
+    /// What to do to every datagram this machine sends (`--net-delay`, `--net-loss`).
+    pub faults: Faults,
 }
 
 impl Default for NetSettings {
     fn default() -> Self {
-        Self { port: DEFAULT_PORT }
+        Self {
+            port: DEFAULT_PORT,
+            faults: Faults::default(),
+        }
     }
 }
 
@@ -267,13 +425,7 @@ pub struct Notice(pub String);
 
 /// The host started the online session; a client waits here for the board's snapshot.
 #[derive(Resource, Debug, Clone)]
-pub struct OnlineStart(
-    #[expect(
-        dead_code,
-        reason = "online minigames (next roadmap item) build their mesh from it"
-    )]
-    pub Start<SocketAddr>,
-);
+pub struct OnlineStart;
 
 #[cfg(test)]
 mod tests {

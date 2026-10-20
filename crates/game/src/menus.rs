@@ -11,6 +11,7 @@ use bevy::input::gamepad::GamepadButton;
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::prelude::*;
 use net::lobby::{LobbyAction, LobbyState, PeerId};
+use net::session::Launch;
 use sim_board::{Board, Game, Rules};
 use sim_core::{Difficulty, Format, FormatKind, MAX_PLAYERS, PlayerSetup, Seat};
 
@@ -288,15 +289,32 @@ const DIM: Color = Color::srgba(0.85, 0.88, 1.0, 0.75);
 #[derive(Resource, Default)]
 struct TitleMenu {
     selected: usize,
+    /// On the "Play online" page instead of the main one.
+    online: bool,
 }
 
-const TITLE_ITEMS: [&str; 5] = [
+const TITLE_ITEMS: [&str; 4] = [
     "title-board",
     "title-free-play",
-    "title-host",
-    "title-join",
+    "title-online",
     "title-quit",
 ];
+const ONLINE_ITEMS: [&str; 4] = [
+    "title-host-board",
+    "title-host-free-play",
+    "title-join",
+    "title-back",
+];
+
+impl TitleMenu {
+    fn items(&self) -> &'static [&'static str; 4] {
+        if self.online {
+            &ONLINE_ITEMS
+        } else {
+            &TITLE_ITEMS
+        }
+    }
+}
 
 #[derive(Component)]
 struct TitleItem(usize);
@@ -338,12 +356,17 @@ fn spawn_title(
     });
 }
 
-#[allow(clippy::too_many_arguments)]
-/// Starts hosting a board game (of `rounds`, or the standard length), or says why it couldn't.
-pub fn host_online(port: u16, rounds: Option<u32>) -> Result<Online, Notice> {
-    let mut lobby = Lobby::new(PlayMode::Board).state;
+/// Starts hosting a board game (of `rounds`, or the standard length) or free play, or says
+/// why it couldn't.
+pub fn host_online(
+    settings: &NetSettings,
+    mode: PlayMode,
+    rounds: Option<u32>,
+) -> Result<Online, Notice> {
+    let port = settings.port;
+    let mut lobby = Lobby::new(mode).state;
     lobby.rounds = rounds.unwrap_or(lobby.rounds).max(1);
-    Online::host(port, lobby).map_err(|e| {
+    Online::host(port, lobby, settings).map_err(|e| {
         Notice(tr!(
             "notice-host-failed",
             port = port as u32,
@@ -352,6 +375,7 @@ pub fn host_online(port: u16, rounds: Option<u32>) -> Result<Online, Notice> {
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn title_menu(
     nav: Res<DeviceNav>,
     mut menu: ResMut<TitleMenu>,
@@ -364,43 +388,63 @@ fn title_menu(
     sfx: Sfx,
 ) {
     let any = nav.any();
-    menu.selected = step(menu.selected, TITLE_ITEMS.len(), any.up, any.down);
+    menu.selected = step(menu.selected, menu.items().len(), any.up, any.down);
     if any.up || any.down {
         sfx.play(Sound::Move);
     }
-    if any.confirm || any.start {
+    if any.back && menu.online {
+        sfx.play(Sound::Back);
+        *menu = TitleMenu {
+            selected: 2,
+            online: false,
+        };
+    } else if any.confirm || any.start {
         sfx.play(Sound::Confirm);
-        match menu.selected {
-            0 => {
+        let mut host = |play: PlayMode| {
+            *mode = play;
+            match host_online(&settings, play, None) {
+                Ok(online) => {
+                    commands.insert_resource(online);
+                    next_state.set(AppState::Join);
+                }
+                Err(notice) => {
+                    commands.insert_resource(notice);
+                    // Re-enter the title to show it.
+                    next_state.set(AppState::Title);
+                }
+            }
+        };
+        match (menu.online, menu.selected) {
+            (false, 0) => {
                 *mode = PlayMode::Board;
                 next_state.set(AppState::Join);
             }
-            1 => {
+            (false, 1) => {
                 *mode = PlayMode::FreePlay;
                 next_state.set(AppState::Join);
             }
-            2 => {
-                *mode = PlayMode::Board;
-                match host_online(settings.port, None) {
-                    Ok(online) => {
-                        commands.insert_resource(online);
-                        next_state.set(AppState::Join);
-                    }
-                    Err(notice) => {
-                        commands.insert_resource(notice);
-                        // Re-enter the title to show it.
-                        next_state.set(AppState::Title);
-                    }
+            (false, 2) => {
+                *menu = TitleMenu {
+                    selected: 0,
+                    online: true,
                 }
             }
-            3 => next_state.set(AppState::Connect),
-            _ => {
+            (false, _) => {
                 exit.write(AppExit::Success);
+            }
+            (true, 0) => host(PlayMode::Board),
+            (true, 1) => host(PlayMode::FreePlay),
+            (true, 2) => next_state.set(AppState::Connect),
+            (true, _) => {
+                *menu = TitleMenu {
+                    selected: 2,
+                    online: false,
+                }
             }
         }
     }
     for (item, mut text, mut color) in &mut items {
-        let label = tr!(TITLE_ITEMS[item.0]);
+        let label = tr!(menu.items()[item.0]);
         let selected = item.0 == menu.selected;
         text.0 = if selected {
             format!("> {label} <")
@@ -632,16 +676,17 @@ fn join_lobby(
     sfx.play(Sound::Confirm);
     commands.insert_resource(lobby.seats(PeerId::HOST));
     commands.insert_resource(lobby.roster());
+    let seed = wall_clock_seed();
+    if let Some(Online::Host(session)) = online.as_deref_mut() {
+        let others = session.start(seed).clients.len();
+        info!("online session started with {others} other machines");
+    }
     match *mode {
         PlayMode::Board => {
             let rules = Rules {
                 rounds: lobby.state.rounds,
                 ..Rules::default()
             };
-            let mut seed = wall_clock_seed();
-            if let Some(Online::Host(session)) = online.as_deref_mut() {
-                seed = session.start(seed).seed;
-            }
             let game = Game::new(
                 Board::meadow(),
                 rules,
@@ -650,8 +695,6 @@ fn join_lobby(
                 &minigames::shown_entries(),
             );
             if let Some(Online::Host(session)) = online.as_deref() {
-                let others = session.clients().len();
-                info!("online board game started with {others} other machines");
                 session.share_game(&game);
             }
             commands.insert_resource(BoardSession::new(game));
@@ -701,7 +744,12 @@ fn react_to_online(
                     commands.insert_resource(lobby.seats(me));
                     commands.insert_resource(lobby.roster());
                 }
-                commands.insert_resource(OnlineStart(start.clone()));
+                commands.insert_resource(OnlineStart);
+                if start.lobby.free_play {
+                    // The host picks; this machine waits on the picker for its launch.
+                    commands.insert_resource(PlayMode::FreePlay);
+                    next_state.set(AppState::Pick);
+                }
             }
             OnlineEvent::PeerJoined => sfx.play(Sound::Join),
             OnlineEvent::PeerLeft => sfx.play(Sound::Back),
@@ -969,6 +1017,7 @@ fn connect_screen(
     nav: Res<DeviceNav>,
     mut screen: ResMut<ConnectScreen>,
     online: Option<Res<Online>>,
+    settings: Res<NetSettings>,
     mut text: Query<(&ConnectText, &mut Text)>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
@@ -1051,7 +1100,7 @@ fn connect_screen(
         }
         if connect {
             match online::parse_address(&screen.address).and_then(|addr| {
-                Online::join(addr)
+                Online::join(addr, &settings)
                     .map(|online| (addr, online))
                     .map_err(|e| tr!("connect-socket-error", error = e.to_string()))
             }) {
@@ -1151,9 +1200,11 @@ fn spawn_pick(
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn pick_minigame(
     nav: Res<DeviceNav>,
     seats: Res<Seats>,
+    online: Option<Res<Online>>,
     mut menu: ResMut<PickMenu>,
     mut text: Query<&mut Text, With<PickText>>,
     mut commands: Commands,
@@ -1162,6 +1213,17 @@ fn pick_minigame(
 ) {
     let entries = minigames::shown_entries();
     let any = nav.any();
+    // Online, the host picks; everyone else waits for its launch (`online::follow_free_play`).
+    if let Some(Online::Client(_)) = online.as_deref() {
+        if any.back {
+            sfx.play(Sound::Back);
+            next_state.set(AppState::Title);
+        }
+        for mut text in &mut text {
+            text.0 = tr!("pick-waiting-host");
+        }
+        return;
+    }
     if any.up || any.down || any.left || any.right {
         sfx.play(Sound::Move);
     }
@@ -1173,20 +1235,36 @@ fn pick_minigame(
     menu.format = step(menu.format, formats.len(), any.left, any.right);
     if any.back {
         sfx.play(Sound::Back);
-        next_state.set(AppState::Join);
+        // Online, leaving the picker ends the session (the title closes it).
+        let back = if online.is_some() {
+            AppState::Title
+        } else {
+            AppState::Join
+        };
+        next_state.set(back);
         return;
     }
     if any.confirm || any.start {
         sfx.play(Sound::Confirm);
         let players = PlayerSetup::first(seats.0.iter().flatten().count().max(2));
+        let setup = RunSetup {
+            seed: wall_clock_seed(),
+            players,
+            format: formats[menu.format],
+            config: default(),
+        };
+        let id = entries[menu.minigame].id.to_string();
+        if let Some(Online::Host(session)) = online.as_deref() {
+            session.launch(Launch {
+                id: id.clone(),
+                seed: setup.seed,
+                players: setup.players,
+                format: setup.format,
+            });
+        }
         commands.insert_resource(MinigameLaunch {
-            id: entries[menu.minigame].id.to_string(),
-            setup: RunSetup {
-                seed: wall_clock_seed(),
-                players,
-                format: formats[menu.format],
-                config: default(),
-            },
+            id,
+            setup,
             origin: Origin::FreePlay,
         });
         next_state.set(AppState::Minigame);

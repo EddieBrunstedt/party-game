@@ -11,7 +11,7 @@ use std::f32::consts::{PI, TAU};
 use bevy::prelude::*;
 use net::board::{BoardUpdate, follow};
 use sim_board::{Awaiting, Board, Decision, Event, Game, Intent, SpaceId, SpaceKind, bot_intent};
-use sim_core::{Button, Difficulty, Format, MAX_PLAYERS, Outcome, Seat};
+use sim_core::{Button, Format, MAX_PLAYERS, Outcome, Seat};
 
 use crate::audio::{Sfx, Sound};
 use crate::characters::{Pose, Roster};
@@ -100,6 +100,8 @@ pub struct BoardSession {
     path_choice: usize,
     /// Online client: a decision went to the host and its update hasn't come back yet.
     sent: bool,
+    /// The seed of the last minigame launched from here, so it isn't launched twice.
+    launched: Option<u64>,
 }
 
 impl BoardSession {
@@ -129,6 +131,7 @@ impl BoardSession {
             ready_since: None,
             path_choice: 0,
             sent: false,
+            launched: None,
         }
     }
 
@@ -318,29 +321,10 @@ fn decide(
             Some(Controller::Remote { .. }) => None,
             _ => human_intent(&mut session, &inputs, seat, &decision).map(|intent| (seat, intent)),
         },
-        Awaiting::Minigame(plan) if online.is_some() => {
-            // Online minigames are the next roadmap item. Until then the host plays them with
-            // bots, out of sight, and shares the outcome; clients wait for it.
-            if let Some(online @ Online::Host(_)) = online.as_deref() {
-                let entry = minigame_registry::find(&plan.id)
-                    .expect("the board only picks registered minigames");
-                let bots = [Difficulty::Normal; MAX_PLAYERS];
-                let played = sim_core::registry::play_with_bots(
-                    entry,
-                    plan.seed,
-                    plan.players,
-                    plan.format,
-                    bots,
-                );
-                let outcome = played.expect("minigames finish with bots (check_all)");
-                match online.apply_outcome(&mut session.game, outcome) {
-                    Ok(events) => session.push(events),
-                    Err(rejected) => warn!("board refused the minigame outcome: {rejected}"),
-                }
-            }
-            None
-        }
+        // Back from a minigame online, a client waits here for the host's outcome.
+        Awaiting::Minigame(plan) if session.launched == Some(plan.seed) => None,
         Awaiting::Minigame(plan) => {
+            session.launched = Some(plan.seed);
             commands.insert_resource(MinigameLaunch {
                 id: plan.id,
                 setup: RunSetup {
@@ -494,15 +478,22 @@ fn collect_minigame_result(
     mut commands: Commands,
     mut session: ResMut<BoardSession>,
     result: Option<Res<MinigameResult>>,
+    online: Option<Res<Online>>,
 ) {
     let Some(result) = result else {
         return;
     };
-    match session.game.apply_minigame_outcome(result.0) {
+    commands.remove_resource::<MinigameResult>();
+    let applied = match online.as_deref() {
+        None => session.game.apply_minigame_outcome(result.0),
+        Some(online @ Online::Host(_)) => online.apply_outcome(&mut session.game, result.0),
+        // A client's board gets the outcome from the host, like every other change.
+        Some(Online::Client(_)) => return,
+    };
+    match applied {
         Ok(events) => session.push(events),
         Err(rejected) => warn!("board refused the minigame outcome: {rejected}"),
     }
-    commands.remove_resource::<MinigameResult>();
 }
 
 fn space_pos(board: &Board, id: SpaceId) -> Vec3 {

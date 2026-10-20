@@ -3,9 +3,12 @@
 //! back to the board. Couch play only for now; online play will feed the same `Run` through `ggrs`.
 
 use std::marker::PhantomData;
+use std::net::SocketAddr;
 
 use bevy::input::gamepad::{Gamepad, GamepadButton, GamepadConnection, GamepadConnectionEvent};
 use bevy::prelude::*;
+use net::rollback::{Rollback, RollbackEvent};
+use net::session::Launch;
 use sim_core::{
     Button, Difficulty, Format, Input, Inputs, MAX_PLAYERS, Minigame, PlayerSetup, Run, RunConfig,
     Seat,
@@ -13,6 +16,7 @@ use sim_core::{
 
 use crate::flow::{AppState, MinigameLaunch, MinigameResult, Origin};
 use crate::intro::InstructionCard;
+use crate::online::{NetStats, Online};
 
 /// How long a finished game stays on screen before A continues.
 const RESTART_DELAY_TICKS: u32 = 90;
@@ -98,6 +102,9 @@ pub struct ActiveRun<M: Minigame> {
     /// Whether the last fixed update stepped the run, so `previous` -> `run.game` is a tick
     /// nobody has reacted to yet. See [`ActiveRun::ticked`].
     stepped: bool,
+    /// Online: the rollback session that owns the real run; `run` is a copy of its newest
+    /// state, for the views.
+    rollback: Option<Rollback<M, SocketAddr>>,
 }
 
 impl<M: Minigame> ActiveRun<M> {
@@ -112,6 +119,7 @@ impl<M: Minigame> ActiveRun<M> {
             finished_ticks: 0,
             start_held: [true; MAX_PLAYERS],
             stepped: false,
+            rollback: None,
         }
     }
 
@@ -249,8 +257,9 @@ fn start_run<M: Minigame>(
     }
 }
 
-fn stop_run<M: Minigame>(mut commands: Commands) {
+fn stop_run<M: Minigame>(mut commands: Commands, mut net_stats: ResMut<NetStats>) {
     commands.remove_resource::<ActiveRun<M>>();
+    net_stats.clear();
 }
 
 const KEYBOARD_BUTTONS: [(KeyCode, Button); 6] = [
@@ -363,6 +372,7 @@ fn human_input(
     input
 }
 
+#[allow(clippy::too_many_arguments)]
 fn step_run<M: Minigame>(
     mut commands: Commands,
     mut active: ResMut<ActiveRun<M>>,
@@ -372,6 +382,8 @@ fn step_run<M: Minigame>(
     mut latch: ResMut<PressLatch>,
     mut next_state: ResMut<NextState<AppState>>,
     card: Option<Res<InstructionCard>>,
+    online: Option<Res<Online>>,
+    mut net_stats: ResMut<NetStats>,
 ) {
     let latched = std::mem::take(&mut latch.0);
     active.stepped = false;
@@ -379,29 +391,125 @@ fn step_run<M: Minigame>(
     if card.is_some() {
         return;
     }
+    // Online, the run goes through rollback from here on.
+    if let Some(online) = online.as_deref()
+        && active.rollback.is_none()
+    {
+        match online.seat_owners() {
+            Some(owners) => match Rollback::start(active.run.clone(), owners, online.endpoint()) {
+                Ok(rollback) => active.rollback = Some(rollback),
+                Err(err) => error!("couldn't start the online minigame: {err}"),
+            },
+            None => error!("couldn't start the online minigame: a machine's address is missing"),
+        }
+    }
 
-    if let Some(outcome) = active.run.outcome() {
-        active.previous = active.run.game.clone();
+    // This machine's seats: its players, and (on the host or the couch) bots and empty seats.
+    let mut start_held = active.start_held;
+    let mut input_for = |seat: Seat, run: &Run<M>| {
+        let i = seat.index();
+        let mut input = match seats.0[i] {
+            None | Some(Controller::Remote { .. }) => Input::default(),
+            Some(Controller::Bot(difficulty)) => M::bot_input(&run.game, seat, difficulty),
+            Some(Controller::Human { gamepad, keyboard }) => {
+                human_input(keyboard, find_pad(gamepad, &gamepads), &keys, latched[i])
+            }
+        };
+        if start_held[i] && input.held(Button::START) {
+            input.set(Button::START, false);
+        } else {
+            start_held[i] = false;
+        }
+        input
+    };
+
+    let first_time = active.finished_ticks == 0;
+    let outcome = if let Some(rollback) = active.rollback.as_mut() {
+        // Keep exchanging inputs even after the end, so slower machines can confirm it too.
+        let advance = rollback.update(&mut input_for);
+        net_stats.record(advance.resimulated, rollback.pings());
+        for event in rollback.events() {
+            match event {
+                RollbackEvent::Desync { tick, peer } => {
+                    error!("minigame out of step with {peer} at tick {tick}")
+                }
+                RollbackEvent::Synchronized(_) => {}
+                other => warn!("online minigame: {other:?}"),
+            }
+        }
+        let outcome = rollback.confirmed_outcome().map(|(tick, outcome)| {
+            if first_time {
+                // Every machine logs this line; they must agree.
+                info!(
+                    "{} over online at tick {tick}: {:?}",
+                    M::ID,
+                    outcome.placement
+                );
+            }
+            outcome
+        });
+        // What was on screen becomes `previous`, and the newest prediction is shown. After a
+        // rollback the views' before/after diff covers the correction, so nothing fires twice.
+        let shown = (advance.new_tick || advance.resimulated > 0).then(|| rollback.run().clone());
+        match shown {
+            Some(shown) => {
+                active.previous = std::mem::replace(&mut active.run, shown).game;
+                active.stepped = true;
+            }
+            None => active.previous = active.run.game.clone(),
+        }
+        outcome
+    } else {
+        active.run.outcome()
+    };
+
+    if let Some(outcome) = outcome {
+        if active.rollback.is_none() {
+            active.previous = active.run.game.clone();
+        }
+        active.start_held = start_held;
         active.finished_ticks += 1;
-        let human_pressed_a = Seat::ALL.into_iter().any(|seat| {
-            seats.is_human(seat)
-                && latched[seat.index()] & Input::default().with(Button::A).buttons != 0
-        });
-        let human_pressed_b = Seat::ALL.into_iter().any(|seat| {
-            seats.is_human(seat)
-                && latched[seat.index()] & Input::default().with(Button::B).buttons != 0
-        });
-        if active.origin == Origin::FreePlay && active.can_restart() && human_pressed_b {
+        let human_pressed = |button: Button| {
+            Seat::ALL.into_iter().any(|seat| {
+                seats.is_human(seat)
+                    && latched[seat.index()] & Input::default().with(button).buttons != 0
+            })
+        };
+        let (pressed_a, pressed_b) = (human_pressed(Button::A), human_pressed(Button::B));
+        // Online free play follows the host: only its players choose to replay or pick again.
+        let host = online.as_deref().is_none_or(Online::is_host);
+        if active.origin == Origin::FreePlay && active.can_restart() && pressed_b && host {
+            if let Some(Online::Host(session)) = online.as_deref() {
+                session.back_to_picker();
+            }
             next_state.set(AppState::Pick);
             return;
         }
         let no_humans = Seat::ALL.into_iter().all(|seat| !seats.is_human(seat));
-        let carry_on = (active.can_restart() && human_pressed_a)
+        let carry_on = (active.can_restart() && pressed_a)
             || (no_humans && active.finished_ticks >= AUTO_CONTINUE_TICKS);
         if carry_on {
-            match active.origin {
-                Origin::FreePlay => active.restart(),
-                Origin::Board => {
+            match (active.origin, online.as_deref()) {
+                (Origin::FreePlay, None) => active.restart(),
+                (Origin::FreePlay, Some(Online::Host(session))) => {
+                    let mut setup = active.setup;
+                    setup.seed = setup.seed.wrapping_add(1);
+                    session.launch(Launch {
+                        id: M::ID.to_string(),
+                        seed: setup.seed,
+                        players: setup.players,
+                        format: setup.format,
+                    });
+                    commands.insert_resource(MinigameLaunch {
+                        id: M::ID.to_string(),
+                        setup,
+                        origin: Origin::FreePlay,
+                    });
+                    next_state.set(AppState::Minigame);
+                }
+                (Origin::FreePlay, Some(Online::Client(_))) => {}
+                // Every machine goes back; only the host's board applies the outcome.
+                (Origin::Board, _) => {
                     commands.insert_resource(MinigameResult(outcome));
                     next_state.set(AppState::Board);
                 }
@@ -409,24 +517,13 @@ fn step_run<M: Minigame>(
         }
         return;
     }
-
-    // Remote seats are neutral until minigames go online (ROADMAP, Milestone 2).
-    let mut inputs: [Input; MAX_PLAYERS] = std::array::from_fn(|i| match seats.0[i] {
-        None | Some(Controller::Remote { .. }) => Input::default(),
-        Some(Controller::Bot(difficulty)) => {
-            M::bot_input(&active.run.game, Seat(i as u8), difficulty)
-        }
-        Some(Controller::Human { gamepad, keyboard }) => {
-            human_input(keyboard, find_pad(gamepad, &gamepads), &keys, latched[i])
-        }
-    });
-    for (input, held) in inputs.iter_mut().zip(active.start_held.iter_mut()) {
-        if *held && input.held(Button::START) {
-            input.set(Button::START, false);
-        } else {
-            *held = false;
-        }
+    if active.rollback.is_some() {
+        active.start_held = start_held;
+        return;
     }
+
+    let inputs = Seat::ALL.map(|seat| input_for(seat, &active.run));
+    active.start_held = start_held;
     active.previous = active.run.game.clone();
     active.run.step(inputs);
     active.stepped = true;

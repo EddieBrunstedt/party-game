@@ -150,8 +150,10 @@ impl<T: Transport> Endpoint<T> {
         connected.map(|(addr, _)| *addr).collect()
     }
 
-    /// The socket for a `ggrs` session. It only talks to connected peers.
+    /// The socket for a new `ggrs` session. It only talks to connected peers, and starts by
+    /// dropping whatever `ggrs` traffic was left over from an earlier session.
     pub fn ggrs_socket(&self) -> GgrsSocket<T> {
+        self.lock().ggrs_inbox.clear();
         GgrsSocket(self.clone())
     }
 
@@ -215,9 +217,11 @@ impl<T: Transport> Inner<T> {
                         self.send_frame(from, &Frame::Refuse(Refusal::NotListening));
                         return;
                     }
-                    None | Some(PeerState::Connecting { .. }) => self.mark_connected(from),
-                    // It refused us earlier, which is final.
-                    Some(PeerState::Refused) => return,
+                    // A peer that refused us earlier (not listening yet) may connect itself
+                    // later: two clients meshing up after a start can cross like that.
+                    None | Some(PeerState::Connecting { .. } | PeerState::Refused) => {
+                        self.mark_connected(from)
+                    }
                     // Our welcome was lost: welcome it again.
                     Some(PeerState::Connected) => {}
                 }

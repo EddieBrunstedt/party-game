@@ -86,6 +86,8 @@ where
     confirmed: Vec<(u32, u64)>,
     outcome: Option<(u32, Outcome)>,
     events: Vec<RollbackEvent<A>>,
+    /// Each handle's remote address, if it's remote.
+    remotes: [Option<A>; MAX_PLAYERS],
 }
 
 impl<M: Minigame, A> Rollback<M, A>
@@ -128,6 +130,10 @@ where
             confirmed: Vec::new(),
             outcome: None,
             events: Vec::new(),
+            remotes: seats.map(|owner| match owner {
+                SeatOwner::Local => None,
+                SeatOwner::Remote(addr) => Some(addr),
+            }),
         })
     }
 
@@ -216,6 +222,25 @@ where
     /// every machine, unlike `run().outcome()`, which a rollback can still take back.
     pub fn confirmed_outcome(&self) -> Option<(u32, Outcome)> {
         self.outcome
+    }
+
+    /// Round-trip time to each remote machine, in milliseconds, once `ggrs` has measured it.
+    pub fn pings(&self) -> Vec<(A, u128)> {
+        let mut pings: Vec<(A, u128)> = Vec::new();
+        for handle in self.session.remote_player_handles() {
+            let Ok(stats) = self.session.network_stats(handle) else {
+                continue;
+            };
+            let addr = self.session_addr(handle);
+            if let Some(addr) = addr.filter(|a| !pings.iter().any(|(p, _)| p == a)) {
+                pings.push((addr, stats.ping));
+            }
+        }
+        pings
+    }
+
+    fn session_addr(&self, handle: usize) -> Option<A> {
+        self.remotes.get(handle).copied().flatten()
     }
 
     pub fn events(&mut self) -> Vec<RollbackEvent<A>> {

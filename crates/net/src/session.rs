@@ -9,7 +9,7 @@ use bincode::Options;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sim_board::{Event, Game, Intent, Rejected};
-use sim_core::{MAX_PLAYERS, Outcome, Seat, checksum};
+use sim_core::{Format, MAX_PLAYERS, Outcome, PlayerSetup, Seat, checksum};
 
 use crate::board::BoardUpdate;
 use crate::lobby::{LobbyAction, LobbyState, PeerId};
@@ -21,11 +21,28 @@ const MAX_MESSAGE: u64 = 1 << 20;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "A: Serialize + DeserializeOwned")]
 enum HostMessage<A> {
-    Welcome { you: PeerId },
+    Welcome {
+        you: PeerId,
+    },
     Lobby(LobbyState),
     Start(Start<A>),
     Refused(JoinRefusal),
     Board(BoardUpdate),
+    /// A player read the instruction card (relayed from whichever machine they're on).
+    Ready(Seat),
+    /// Free play: everyone plays this minigame now.
+    Launch(Launch),
+    /// Free play: back to the host choosing a minigame.
+    BackToPicker,
+}
+
+/// A minigame for every machine to start, chosen by the host in free play.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Launch {
+    pub id: String,
+    pub seed: u64,
+    pub players: PlayerSetup,
+    pub format: Format,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -38,6 +55,8 @@ enum ClientMessage {
     },
     /// This machine's copy of the board went wrong; send the whole game.
     NeedSnapshot,
+    /// One of this machine's players read the instruction card.
+    Ready(Seat),
 }
 
 /// What everyone needs to begin, sent by the host when it starts the session.
@@ -90,6 +109,8 @@ pub enum HostEvent {
     Intent { seat: Seat, intent: Intent },
     /// A client's board went wrong: answer with [`Host::send_snapshot`].
     NeedSnapshot(PeerId),
+    /// A client's player read the instruction card (already passed on to the other clients).
+    Ready(Seat),
 }
 
 pub struct Host<T: Transport> {
@@ -166,6 +187,13 @@ where
                         }
                         Some(ClientMessage::NeedSnapshot) => {
                             events.push(HostEvent::NeedSnapshot(peer))
+                        }
+                        Some(ClientMessage::Ready(seat)) => {
+                            let owner = self.lobby.seats[seat.index()].map(|claim| claim.peer);
+                            if owner == Some(peer) {
+                                self.broadcast(&HostMessage::Ready(seat));
+                                events.push(HostEvent::Ready(seat));
+                            }
                         }
                         None => {}
                     }
@@ -272,6 +300,21 @@ where
         Ok(events)
     }
 
+    /// One of the host's players read the instruction card.
+    pub fn ready(&self, seat: Seat) {
+        self.broadcast(&HostMessage::Ready(seat));
+    }
+
+    /// Free play: every client starts this minigame.
+    pub fn launch(&self, launch: Launch) {
+        self.broadcast(&HostMessage::Launch(launch));
+    }
+
+    /// Free play: every client goes back to waiting while the host picks.
+    pub fn back_to_picker(&self) {
+        self.broadcast(&HostMessage::BackToPicker);
+    }
+
     /// Says goodbye to every client.
     pub fn close(self) {
         for addr in self.clients.keys() {
@@ -299,6 +342,10 @@ pub enum ClientEvent<A> {
     HostLeft,
     /// News from the board: apply it with [`crate::board::follow`] (or take the snapshot).
     Board(BoardUpdate),
+    /// A player (on any machine) read the instruction card.
+    Ready(Seat),
+    Launch(Launch),
+    BackToPicker,
 }
 
 pub struct Client<T: Transport> {
@@ -306,6 +353,8 @@ pub struct Client<T: Transport> {
     host: T::Addr,
     me: Option<PeerId>,
     lobby: Option<LobbyState>,
+    /// The other clients, once started.
+    others: Vec<(PeerId, T::Addr)>,
 }
 
 impl<T: Transport> Client<T>
@@ -319,7 +368,15 @@ where
             host,
             me: None,
             lobby: None,
+            others: Vec::new(),
         }
+    }
+
+    /// Every other machine in the session and where to reach it (the host first), once started.
+    pub fn peers(&self) -> Vec<(PeerId, T::Addr)> {
+        let mut peers = vec![(PeerId::HOST, self.host)];
+        peers.extend(self.others.iter().copied());
+        peers
     }
 
     pub fn host(&self) -> T::Addr {
@@ -353,6 +410,13 @@ where
         let _ = self.endpoint.send(self.host, &encode(&message));
     }
 
+    /// One of this machine's players read the instruction card.
+    pub fn ready(&self, seat: Seat) {
+        let _ = self
+            .endpoint
+            .send(self.host, &encode(&ClientMessage::Ready(seat)));
+    }
+
     /// Asks for the whole game, when this machine's copy no longer matches the host's.
     pub fn request_snapshot(&self) {
         let _ = self
@@ -374,12 +438,31 @@ where
                             self.lobby = Some(lobby);
                             events.push(ClientEvent::LobbyChanged);
                         }
-                        Some(HostMessage::Start(start)) => events.push(ClientEvent::Started(start)),
+                        Some(HostMessage::Start(start)) => {
+                            // Minigames need every machine to reach every other: connect to
+                            // the other clients too.
+                            let me = self.me;
+                            self.others = start
+                                .clients
+                                .iter()
+                                .copied()
+                                .filter(|(id, _)| Some(*id) != me)
+                                .collect();
+                            for (_, addr) in &self.others {
+                                self.endpoint.connect(*addr);
+                            }
+                            events.push(ClientEvent::Started(start));
+                        }
                         Some(HostMessage::Refused(refusal)) => {
                             self.endpoint.disconnect(self.host);
                             events.push(ClientEvent::Refused(refusal));
                         }
                         Some(HostMessage::Board(update)) => events.push(ClientEvent::Board(update)),
+                        Some(HostMessage::Ready(seat)) => events.push(ClientEvent::Ready(seat)),
+                        Some(HostMessage::Launch(launch)) => {
+                            events.push(ClientEvent::Launch(launch))
+                        }
+                        Some(HostMessage::BackToPicker) => events.push(ClientEvent::BackToPicker),
                         None => {}
                     }
                 }

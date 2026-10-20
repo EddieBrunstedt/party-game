@@ -16,8 +16,9 @@ use crate::audio::{Sfx, Sound};
 use crate::board_view::format_text;
 use crate::flow::{AppState, MinigameLaunch};
 use crate::i18n::{bot_tag, has_key};
+use crate::online::{Online, RemoteReady};
 use crate::palette::{NIGHT_SKY, seat_color, seat_label};
-use crate::runner::{ActiveRun, MinigameSet, PressLatch, SeatInputs, Seats};
+use crate::runner::{ActiveRun, Controller, MinigameSet, PressLatch, SeatInputs, Seats};
 use crate::tr;
 
 /// With nobody to press A, the card stays up this long on its own.
@@ -135,10 +136,19 @@ fn text(text: impl Into<String>, size: f32, color: Color) -> impl Bundle {
     )
 }
 
+/// Whether a person (here or on another machine) has to press A before the minigame starts.
+fn must_read(seats: &Seats, seat: Seat) -> bool {
+    matches!(
+        seats.0[seat.index()],
+        Some(Controller::Human { .. } | Controller::Remote { bot: false })
+    )
+}
+
 fn open_card(
     mut commands: Commands,
     launch: Option<Res<MinigameLaunch>>,
     seats: Res<Seats>,
+    remote_ready: Res<RemoteReady>,
     time: Res<Time>,
     sfx: Sfx,
 ) {
@@ -149,7 +159,7 @@ fn open_card(
     let id = launch.id.as_str();
     let format = launch.setup.format;
     let players = launch.setup.players;
-    let ready = std::array::from_fn(|i| !seats.is_human(Seat(i as u8)));
+    let ready = std::array::from_fn(|i| !must_read(&seats, Seat(i as u8)) || remote_ready.0[i]);
 
     // Where every minigame's banner goes; views leave theirs empty during the countdown.
     commands
@@ -261,11 +271,14 @@ fn open_card(
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn update_card(
     mut commands: Commands,
     mut card: ResMut<InstructionCard>,
     seats: Res<Seats>,
     inputs: Res<SeatInputs>,
+    online: Option<Res<Online>>,
+    mut remote_ready: ResMut<RemoteReady>,
     time: Res<Time>,
     mut latch: ResMut<PressLatch>,
     mut chips: Query<(&ReadyChip, &mut Text)>,
@@ -273,13 +286,22 @@ fn update_card(
 ) {
     let now = time.elapsed_secs();
     for seat in Seat::ALL {
-        if !seats.is_human(seat) {
+        let i = seat.index();
+        if card.ready[i] {
             continue;
         }
-        // A seat whose pad is gone can't press anything; don't hold everyone else up.
-        let lost = inputs.0.current[seat.index()].held(Button::CONTROLLER_LOST);
-        if !card.ready[seat.index()] && (lost || inputs.just_pressed(seat, Button::A)) {
-            card.ready[seat.index()] = true;
+        if seats.is_human(seat) {
+            // A seat whose pad is gone can't press anything; don't hold everyone else up.
+            let lost = inputs.0.current[i].held(Button::CONTROLLER_LOST);
+            if lost || inputs.just_pressed(seat, Button::A) {
+                card.ready[i] = true;
+                sfx.play(Sound::Ready);
+                if let Some(online) = &online {
+                    online.ready(seat);
+                }
+            }
+        } else if remote_ready.0[i] {
+            card.ready[i] = true;
             sfx.play(Sound::Ready);
         }
     }
@@ -296,7 +318,7 @@ fn update_card(
         );
     }
 
-    let any_human = Seat::ALL.into_iter().any(|seat| seats.is_human(seat));
+    let any_human = Seat::ALL.into_iter().any(|seat| must_read(&seats, seat));
     if card.ready.iter().all(|r| *r) && card.all_ready_at.is_none() {
         card.all_ready_at = Some(now);
     }
@@ -307,6 +329,7 @@ fn update_card(
     if close {
         // The A that closed the card belongs to the card, not the first tick of the game.
         latch.0 = [0; MAX_PLAYERS];
+        remote_ready.0 = [false; MAX_PLAYERS];
         commands.entity(card.root).despawn();
         commands.remove_resource::<InstructionCard>();
     }

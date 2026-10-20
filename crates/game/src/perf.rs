@@ -136,6 +136,7 @@ fn update_overlay(
     diagnostics: Res<DiagnosticsStore>,
     stats: Res<GpuStats>,
     quality: Res<Quality>,
+    net: Option<Res<crate::online::NetStats>>,
     mut overlay: Query<&mut Text, With<PerfText>>,
 ) {
     let fps = diagnostics
@@ -151,6 +152,9 @@ fn update_overlay(
             .unwrap_or_default();
         for mut text in &mut overlay {
             text.0 = format!("{fps:.0} fps  {frame_ms:.2} ms{gpu}  [{:?}]", *quality);
+            if let Some(line) = net.as_ref().and_then(|net| net.line()) {
+                text.0 = format!("{}\n{line}", text.0);
+            }
         }
     }
 }

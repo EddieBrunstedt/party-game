@@ -256,3 +256,43 @@ fn clients_only_decide_for_their_own_seats() {
         }]
     );
 }
+
+#[test]
+fn after_the_start_clients_mesh_up_and_readiness_reaches_everyone() {
+    let mut world = World::new();
+    let mut a = world.client(2, "v1");
+    let mut b = world.client(3, "v1");
+    let mut events = Vec::new();
+    world.run(&mut [&mut a, &mut b], &mut events, |_, _, events| {
+        events
+            .iter()
+            .all(|e| e.iter().any(|e| matches!(e, ClientEvent::Welcomed(_))))
+    });
+    a.act(LobbyAction::Join { local: 0 });
+    world.run(&mut [&mut a, &mut b], &mut events, |world, _, _| {
+        world.host.lobby().anyone_joined()
+    });
+    let seat = world.host.lobby().seat_of(a.me().unwrap(), 0).unwrap();
+    world.host.start(5);
+    world.run(&mut [&mut a, &mut b], &mut events, |_, clients, _| {
+        clients
+            .iter()
+            .all(|c| c.endpoint().connected_peers().len() == 2)
+    });
+    assert_eq!(a.peers().len(), 2, "the host and the other client");
+
+    a.ready(seat);
+    // b can't speak for a's seat; the host ignores it.
+    b.ready(seat);
+    let mut events = Vec::new();
+    world.run(&mut [&mut a, &mut b], &mut events, |world, _, events| {
+        events[1].contains(&ClientEvent::Ready(seat))
+            && world.host_events.contains(&HostEvent::Ready(seat))
+    });
+    let count = world
+        .host_events
+        .iter()
+        .filter(|e| **e == HostEvent::Ready(seat))
+        .count();
+    assert_eq!(count, 1);
+}

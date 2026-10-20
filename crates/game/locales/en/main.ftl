@@ -14,8 +14,11 @@ difficulty-hard = Hard
 title-tagline = A board game of lanterns, fireflies and friendly shoving
 title-board = Board game
 title-free-play = Free play
-title-host = Host online
-title-join = Join online
+title-online = Play online
+title-host-board = Host a board game
+title-host-free-play = Host free play
+title-join = Join a game
+title-back = Back
 title-quit = Quit
 title-controls = Stick / arrows to choose, A / Space to confirm
 
@@ -60,6 +63,7 @@ notice-host-failed = Couldn't host on port { $port }: { $error }
 ## Free play
 pick-title = Free play
 pick-hint = Up/down: minigame   Left/right: teams   A: play   B: back
+pick-waiting-host = The host is choosing a minigame...
 
 ## Results
 results-title = { $winners } { $count ->

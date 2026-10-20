@@ -53,6 +53,7 @@ Items, shops, event spaces, bonus stars, last-5-turns events, **duels (1v1, need
   - **Lantern Push:** sumo knockoff on a shrinking platform. Proves physics, knockback and rollback. A dashes into rivals, B braces (heavy for a moment, so a dash bounces off). The platform shrinks from 8 s to 45 s; last player or team standing wins, and at the 75 s limit survivors share the win. In 1v3 the solo is bigger and heavier.
   - **Firefly Catch:** chase fleeing fireflies. Proves spawning, simple AI-driven objects, particles and scoring. A swings a net, B dashes. A startled firefly sprints and hops over its chaser, which tires it; tired fireflies are slow and easy to net. A ring on the ground in front of each player shows exactly where the net catches, and each firefly's ground spot pulses while it's tired. Golden fireflies are worth 3; in 1v3 the solo's catches count triple.
   - **Quick Draw:** press when the lantern lights. Proves reflex/timing games and is the first minigame used to build the pipeline.
+- **Ideas for more minigames** are collected in [MINIGAME_IDEAS.md](MINIGAME_IDEAS.md).
 - **Free-play mode:** play any minigame directly from a menu. The same entry point is available from the CLI for development, with N bots.
 
 ### 3.4 Players, bots and controllers

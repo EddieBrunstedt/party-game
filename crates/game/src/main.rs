@@ -91,6 +91,12 @@ struct Cli {
     /// The port to host on.
     #[arg(long, default_value_t = online::DEFAULT_PORT)]
     port: u16,
+    /// Delay every datagram this machine sends by this much (feel a laggy connection locally).
+    #[arg(long, value_name = "MS", default_value_t = 0)]
+    net_delay: u64,
+    /// Lose this percentage of the datagrams this machine sends.
+    #[arg(long, value_name = "PERCENT", default_value_t = 0)]
+    net_loss: u32,
     /// Write every sound effect to this directory as WAVs, then exit.
     #[arg(long, value_name = "DIR")]
     dump_sfx: Option<PathBuf>,
@@ -194,6 +200,17 @@ fn main() {
         },
     };
 
+    let net_settings = online::NetSettings {
+        port: cli.port,
+        faults: net::Faults {
+            loss_percent: cli.net_loss.min(100),
+            delay: std::time::Duration::from_millis(cli.net_delay),
+            // A little jitter around the delay, as a real connection has.
+            jitter: std::time::Duration::from_millis(cli.net_delay / 4),
+            duplicate_percent: 0,
+        },
+    };
+
     let mut app = App::new();
     app.add_plugins(
         DefaultPlugins
@@ -214,7 +231,7 @@ fn main() {
     )
     .insert_resource(Time::<Fixed>::from_hz(TICK_HZ as f64))
     .insert_resource(Seats(seats))
-    .insert_resource(online::NetSettings { port: cli.port })
+    .insert_resource(net_settings)
     .init_resource::<characters::Roster>()
     .add_plugins((
         perf::PerfOverlayPlugin {
@@ -264,17 +281,19 @@ fn main() {
             app.insert_resource(board_view::BoardSession::new(game))
                 .insert_state(AppState::Board);
         }
-        None if cli.host => match menus::host_online(cli.port, cli.rounds) {
-            Ok(online) => {
-                app.insert_resource(Seats([None; 4]))
-                    .insert_resource(online)
-                    .insert_state(AppState::Join);
+        None if cli.host => {
+            match menus::host_online(&net_settings, menus::PlayMode::Board, cli.rounds) {
+                Ok(online) => {
+                    app.insert_resource(Seats([None; 4]))
+                        .insert_resource(online)
+                        .insert_state(AppState::Join);
+                }
+                Err(notice) => {
+                    eprintln!("{}", notice.0);
+                    std::process::exit(1);
+                }
             }
-            Err(notice) => {
-                eprintln!("{}", notice.0);
-                std::process::exit(1);
-            }
-        },
+        }
         None if cli.join.is_some() => {
             let address = cli.join.clone().unwrap_or_default();
             app.insert_resource(Seats([None; 4]))
