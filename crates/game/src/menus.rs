@@ -36,14 +36,14 @@ impl Plugin for MenusPlugin {
             .add_systems(OnEnter(AppState::Join), spawn_join)
             .add_systems(
                 Update,
-                (poll_online, join_lobby, show_lobby)
+                (react_to_online, join_lobby, show_lobby)
                     .chain()
                     .run_if(in_state(AppState::Join)),
             )
             .add_systems(OnEnter(AppState::Connect), spawn_connect)
             .add_systems(
                 Update,
-                (poll_online, connect_screen)
+                (react_to_online, connect_screen)
                     .chain()
                     .run_if(in_state(AppState::Connect)),
             )
@@ -339,9 +339,11 @@ fn spawn_title(
 }
 
 #[allow(clippy::too_many_arguments)]
-/// Starts hosting a board game, or says why it couldn't.
-pub fn host_online(port: u16) -> Result<Online, Notice> {
-    Online::host(port, Lobby::new(PlayMode::Board).state).map_err(|e| {
+/// Starts hosting a board game (of `rounds`, or the standard length), or says why it couldn't.
+pub fn host_online(port: u16, rounds: Option<u32>) -> Result<Online, Notice> {
+    let mut lobby = Lobby::new(PlayMode::Board).state;
+    lobby.rounds = rounds.unwrap_or(lobby.rounds).max(1);
+    Online::host(port, lobby).map_err(|e| {
         Notice(tr!(
             "notice-host-failed",
             port = port as u32,
@@ -379,7 +381,7 @@ fn title_menu(
             }
             2 => {
                 *mode = PlayMode::Board;
-                match host_online(settings.port) {
+                match host_online(settings.port, None) {
                     Ok(online) => {
                         commands.insert_resource(online);
                         next_state.set(AppState::Join);
@@ -454,10 +456,12 @@ impl Lobby {
         Roster(self.state.roster().map(|c| Character::ALL[c as usize]))
     }
 
-    /// Couch seats: every claim is this machine's, read from the device that made it.
-    fn seats(&self) -> Seats {
+    /// Who plays each seat, seen from machine `me`: its own claims read the device that made
+    /// them, other machines' are remote, and empty seats are bots (run by the host).
+    fn seats(&self, me: PeerId) -> Seats {
         Seats(Seat::ALL.map(|seat| {
             Some(match self.state.seats[seat.index()] {
+                Some(claim) if claim.peer != me => Controller::Remote { bot: false },
                 Some(claim) => match self.devices[claim.local as usize] {
                     Device::Keyboard => Controller::Human {
                         gamepad: Pad::None,
@@ -468,7 +472,8 @@ impl Lobby {
                         keyboard: false,
                     },
                 },
-                None => Controller::Bot(self.state.bots),
+                None if me == PeerId::HOST => Controller::Bot(self.state.bots),
+                None => Controller::Remote { bot: true },
             })
         }))
     }
@@ -625,17 +630,7 @@ fn join_lobby(
         return;
     }
     sfx.play(Sound::Confirm);
-    if let Some(Online::Host(session)) = online.as_deref_mut() {
-        // The board protocol (next on the roadmap) takes the session from here.
-        let start = session.start(wall_clock_seed());
-        info!(
-            "online session started with {} other machines",
-            start.clients.len()
-        );
-        commands.insert_resource(OnlineStart(start));
-        return;
-    }
-    commands.insert_resource(lobby.seats());
+    commands.insert_resource(lobby.seats(PeerId::HOST));
     commands.insert_resource(lobby.roster());
     match *mode {
         PlayMode::Board => {
@@ -643,13 +638,22 @@ fn join_lobby(
                 rounds: lobby.state.rounds,
                 ..Rules::default()
             };
+            let mut seed = wall_clock_seed();
+            if let Some(Online::Host(session)) = online.as_deref_mut() {
+                seed = session.start(seed).seed;
+            }
             let game = Game::new(
                 Board::meadow(),
                 rules,
                 MAX_PLAYERS,
-                wall_clock_seed(),
+                seed,
                 &minigames::shown_entries(),
             );
+            if let Some(Online::Host(session)) = online.as_deref() {
+                let others = session.clients().len();
+                info!("online board game started with {others} other machines");
+                session.share_game(&game);
+            }
             commands.insert_resource(BoardSession::new(game));
             next_state.set(AppState::Board);
         }
@@ -657,20 +661,20 @@ fn join_lobby(
     }
 }
 
-/// Reads the online session every frame on the screens that have one, and acts on what
-/// happened: welcomed, refused, started, or the host gone.
-fn poll_online(
-    mut online: Option<ResMut<Online>>,
+/// Acts on what the online session reported, on the join and connect screens: welcomed,
+/// refused, started. (The host leaving is handled on every screen, in `online.rs`.)
+#[allow(clippy::too_many_arguments)]
+fn react_to_online(
+    mut events: MessageReader<OnlineEvent>,
+    online: Option<Res<Online>>,
     state: Res<State<AppState>>,
     mut connect: Option<ResMut<ConnectScreen>>,
+    mut lobby: Option<ResMut<Lobby>>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
     sfx: Sfx,
 ) {
-    let Some(session) = online.as_deref_mut() else {
-        return;
-    };
-    for event in session.poll() {
+    for event in events.read() {
         match event {
             OnlineEvent::Welcomed => {
                 if *state.get() == AppState::Connect {
@@ -681,27 +685,27 @@ fn poll_online(
             }
             OnlineEvent::Refused(refusal) => {
                 if let Some(connect) = connect.as_deref_mut() {
-                    connect.status = ConnectStatus::Failed(online::refusal_text(&refusal));
+                    connect.status = ConnectStatus::Failed(online::refusal_text(refusal));
                 }
                 sfx.play(Sound::Back);
                 commands.remove_resource::<Online>();
                 return;
             }
-            OnlineEvent::HostLeft => {
-                sfx.play(Sound::Back);
-                commands.remove_resource::<Online>();
-                commands.remove_resource::<OnlineStart>();
-                commands.insert_resource(Notice(tr!("notice-host-left")));
-                next_state.set(AppState::Title);
-                return;
-            }
             OnlineEvent::Started(start) => {
                 sfx.play(Sound::Confirm);
                 info!("the host started the online session");
-                commands.insert_resource(OnlineStart(start));
+                // The board itself follows as a snapshot (`board_view::sync_online_board`).
+                let me = online.as_ref().and_then(|o| o.me()).unwrap_or(PeerId::HOST);
+                if let Some(lobby) = lobby.as_deref_mut() {
+                    lobby.state = start.lobby.clone();
+                    commands.insert_resource(lobby.seats(me));
+                    commands.insert_resource(lobby.roster());
+                }
+                commands.insert_resource(OnlineStart(start.clone()));
             }
             OnlineEvent::PeerJoined => sfx.play(Sound::Join),
             OnlineEvent::PeerLeft => sfx.play(Sound::Back),
+            _ => {}
         }
     }
 }
@@ -1326,7 +1330,7 @@ mod tests {
         let roster = lobby.roster();
         assert_eq!(roster.of(Seat(0)), Character::PaperLantern);
         assert_eq!(roster.of(Seat(1)), Character::NeonRing);
-        let seats = lobby.seats();
+        let seats = lobby.seats(PeerId::HOST);
         assert_eq!(
             seats.0[0],
             Some(Controller::Human {
@@ -1342,7 +1346,7 @@ mod tests {
         let mut lobby = Lobby::new(PlayMode::Board);
         lobby.state.bots = Difficulty::Hard;
         join(&mut lobby, Device::Keyboard);
-        let seats = lobby.seats();
+        let seats = lobby.seats(PeerId::HOST);
         assert!(seats.is_human(Seat(0)));
         assert_eq!(seats.0[1], Some(Controller::Bot(Difficulty::Hard)));
     }

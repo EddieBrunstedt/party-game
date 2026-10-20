@@ -9,13 +9,15 @@ use std::collections::VecDeque;
 use std::f32::consts::{PI, TAU};
 
 use bevy::prelude::*;
+use net::board::{BoardUpdate, follow};
 use sim_board::{Awaiting, Board, Decision, Event, Game, Intent, SpaceId, SpaceKind, bot_intent};
-use sim_core::{Button, Format, MAX_PLAYERS, Outcome, Seat};
+use sim_core::{Button, Difficulty, Format, MAX_PLAYERS, Outcome, Seat};
 
 use crate::audio::{Sfx, Sound};
 use crate::characters::{Pose, Roster};
 use crate::flow::{AppState, MinigameLaunch, MinigameResult, Origin};
 use crate::i18n::{bot_tag, names};
+use crate::online::{Online, OnlineEvent};
 use crate::palette::{LANTERN_WARM, MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
 use crate::particles::{self, Effects, hdr};
 use crate::runner::{Controller, RunSetup, SeatInputs, Seats};
@@ -33,6 +35,7 @@ impl Plugin for BoardViewPlugin {
             OnEnter(AppState::Board),
             (collect_minigame_result, spawn_scene, spawn_hud).chain(),
         )
+        .add_systems(Update, sync_online_board.run_if(resource_exists::<Online>))
         .add_systems(
             Update,
             (
@@ -95,24 +98,22 @@ pub struct BoardSession {
     ready_since: Option<f32>,
     /// The highlighted option at a fork.
     path_choice: usize,
+    /// Online client: a decision went to the host and its update hasn't come back yet.
+    sent: bool,
 }
 
 impl BoardSession {
+    /// Shows `game` as it stands: a new game, or a snapshot from the host mid-game.
     pub fn new(game: Game) -> Self {
         let start = game.board().start();
         let players = game.players();
+        let of = |seat: Seat| players.is_active(seat).then(|| *game.player(seat));
         let shown = Shown {
-            space: [start; MAX_PLAYERS],
-            coins: Seat::ALL.map(|s| {
-                if players.is_active(s) {
-                    game.player(s).coins
-                } else {
-                    0
-                }
-            }),
-            stars: [0; MAX_PLAYERS],
+            space: Seat::ALL.map(|s| of(s).map_or(start, |p| p.space)),
+            coins: Seat::ALL.map(|s| of(s).map_or(0, |p| p.coins)),
+            stars: Seat::ALL.map(|s| of(s).map_or(0, |p| p.stars)),
             star: game.star(),
-            round: 0,
+            round: game.round(),
             active: None,
             die: None,
             steps_left: None,
@@ -127,6 +128,7 @@ impl BoardSession {
             shown,
             ready_since: None,
             path_choice: 0,
+            sent: false,
         }
     }
 
@@ -216,6 +218,11 @@ fn play_events(time: Res<Time>, mut session: ResMut<BoardSession>) {
         let Some(event) = session.queue.pop_front() else {
             return;
         };
+        if let Event::GameOver { .. } = event {
+            // Online, every machine logs this; they must agree.
+            let sum = sim_core::checksum(&session.game);
+            info!("board game over, checksum {sum:016x}");
+        }
         show(&mut session.shown, &event);
         session.played += 1;
         session.playing = Some(Playing {
@@ -286,15 +293,17 @@ fn react_to_events(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn decide(
     mut commands: Commands,
     time: Res<Time>,
     seats: Res<Seats>,
     inputs: Res<SeatInputs>,
     mut session: ResMut<BoardSession>,
+    online: Option<Res<Online>>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
-    if !session.idle() {
+    if !session.idle() || session.sent {
         return;
     }
     let now = time.elapsed_secs();
@@ -305,8 +314,32 @@ fn decide(
                 .then(|| bot_intent(&session.game, seat, difficulty))
                 .flatten()
                 .map(|intent| (seat, intent)),
+            // Another machine decides; its decision arrives through the host.
+            Some(Controller::Remote { .. }) => None,
             _ => human_intent(&mut session, &inputs, seat, &decision).map(|intent| (seat, intent)),
         },
+        Awaiting::Minigame(plan) if online.is_some() => {
+            // Online minigames are the next roadmap item. Until then the host plays them with
+            // bots, out of sight, and shares the outcome; clients wait for it.
+            if let Some(online @ Online::Host(_)) = online.as_deref() {
+                let entry = minigame_registry::find(&plan.id)
+                    .expect("the board only picks registered minigames");
+                let bots = [Difficulty::Normal; MAX_PLAYERS];
+                let played = sim_core::registry::play_with_bots(
+                    entry,
+                    plan.seed,
+                    plan.players,
+                    plan.format,
+                    bots,
+                );
+                let outcome = played.expect("minigames finish with bots (check_all)");
+                match online.apply_outcome(&mut session.game, outcome) {
+                    Ok(events) => session.push(events),
+                    Err(rejected) => warn!("board refused the minigame outcome: {rejected}"),
+                }
+            }
+            None
+        }
         Awaiting::Minigame(plan) => {
             commands.insert_resource(MinigameLaunch {
                 id: plan.id,
@@ -334,12 +367,81 @@ fn decide(
         }
     };
     if let Some((seat, intent)) = intent {
-        match session.game.apply(seat, intent) {
+        let result = match online.as_deref() {
+            Some(online) => online.decide(&mut session.game, seat, intent),
+            None => session.game.apply(seat, intent),
+        };
+        match result {
             Ok(events) => {
                 session.path_choice = 0;
+                session.sent = matches!(online.as_deref(), Some(Online::Client(_)));
                 session.push(events);
             }
             Err(rejected) => warn!("board refused {intent:?} from {seat:?}: {rejected}"),
+        }
+    }
+}
+
+/// Online: a client follows the host's board (the snapshot that starts it, then every
+/// decision and outcome), and the host applies clients' decisions and resends the game to a
+/// client whose copy went wrong.
+fn sync_online_board(
+    mut events: MessageReader<OnlineEvent>,
+    online: Res<Online>,
+    mut session: Option<ResMut<BoardSession>>,
+    state: Res<State<AppState>>,
+    mut commands: Commands,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
+    // A snapshot replaces the session, and updates in the same batch go on top of it.
+    let mut fresh: Option<BoardSession> = None;
+    for event in events.read() {
+        match (event, online.as_ref()) {
+            (OnlineEvent::Board(BoardUpdate::Snapshot(game)), Online::Client(_)) => {
+                fresh = Some(BoardSession::new((**game).clone()));
+            }
+            (OnlineEvent::Board(update), Online::Client(client)) => {
+                let Some(target) = fresh.as_mut().or(session.as_deref_mut()) else {
+                    warn!("a board update before the snapshot");
+                    continue;
+                };
+                match follow(&mut target.game, update) {
+                    Ok(events) => {
+                        target.sent = false;
+                        target.push(events);
+                    }
+                    Err(desync) => {
+                        error!(
+                            "out of step with the host's board ({desync}); asking for the whole game"
+                        );
+                        client.request_snapshot();
+                    }
+                }
+            }
+            (OnlineEvent::Intent { seat, intent }, Online::Host(host)) => {
+                let Some(session) = session.as_deref_mut() else {
+                    continue;
+                };
+                match host.apply(&mut session.game, *seat, *intent) {
+                    Ok(events) => session.push(events),
+                    // Sent twice before the first came back, say: nothing to do.
+                    Err(rejected) => debug!("refused {intent:?} from {seat:?}: {rejected}"),
+                }
+            }
+            (OnlineEvent::NeedSnapshot(peer), Online::Host(host)) => {
+                if let Some(session) = &session {
+                    warn!("{peer:?} went out of step; sending it the whole game");
+                    host.send_snapshot(*peer, &session.game);
+                }
+            }
+            _ => {}
+        }
+    }
+    if let Some(fresh) = fresh {
+        info!("joined the host's board at round {}", fresh.game.round());
+        commands.insert_resource(fresh);
+        if *state.get() != AppState::Board {
+            next_state.set(AppState::Board);
         }
     }
 }

@@ -212,3 +212,47 @@ fn clients_hear_when_the_host_closes() {
     }
     panic!("the client never heard the host leave");
 }
+
+#[test]
+fn clients_only_decide_for_their_own_seats() {
+    use sim_board::Intent;
+
+    let mut world = World::new();
+    let mut a = world.client(2, "v1");
+    let mut events = Vec::new();
+    world.run(&mut [&mut a], &mut events, |_, _, events| {
+        events[0]
+            .iter()
+            .any(|e| matches!(e, ClientEvent::Welcomed(_)))
+    });
+    world.host.act(LobbyAction::Join { local: 0 });
+    a.act(LobbyAction::Join { local: 0 });
+    world.run(&mut [&mut a], &mut events, |world, _, _| {
+        world.host.lobby().seats.iter().flatten().count() == 2
+    });
+    let theirs = world.host.lobby().seat_of(a.me().unwrap(), 0).unwrap();
+    let hosts = world.host.lobby().seat_of(PeerId::HOST, 0).unwrap();
+
+    // Only for the sender's own seat.
+    world.host.start(1);
+    a.send_intent(hosts, Intent::Roll);
+    a.send_intent(theirs, Intent::BuyStar(true));
+    world.run(&mut [&mut a], &mut events, |world, _, _| {
+        world
+            .host_events
+            .iter()
+            .any(|e| matches!(e, HostEvent::Intent { .. }))
+    });
+    let intents: Vec<_> = world
+        .host_events
+        .iter()
+        .filter(|e| matches!(e, HostEvent::Intent { .. }))
+        .collect();
+    assert_eq!(
+        intents,
+        [&HostEvent::Intent {
+            seat: theirs,
+            intent: Intent::BuyStar(true)
+        }]
+    );
+}

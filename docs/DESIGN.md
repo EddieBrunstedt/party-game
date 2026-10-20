@@ -133,7 +133,7 @@ Determinism rules for simulation code:
 
 | Phase | Model | Details |
 |---|---|---|
-| Board | Host-authoritative, event-driven | Clients send intents (roll, pick path, buy star). The host applies them and broadcasts results. Dice use a seeded RNG on the host. |
+| Board | Host-authoritative, event-driven | Clients send intents (roll, pick path, buy star) for their own seats. The host applies them and broadcasts each accepted intent with the game's checksum after it; clients apply it to their copy, check the sum, and ask for a full snapshot if it differs (`net::board`). Dice use a seeded RNG on the host. Bots run on the host. |
 | Minigame | Deterministic rollback over inputs only ([ADR 0002](adr/0002-rollback-with-ggrs-core.md)) | `ggrs` drives `Minigame::step`. Save = `clone`, load = restore, checksum = hash. 60 Hz, 2 frames input delay, max 8 frames of rollback. The host hands each minigame its seed, players and format. Each machine sends the input for its own seats; the host also sends the bots' and the empty seats'. The outcome counts once its tick is confirmed (`net::rollback`). |
 
 - **Pause is an input.** All peers see it on the same frame, and the simulation stops advancing game time while paused.

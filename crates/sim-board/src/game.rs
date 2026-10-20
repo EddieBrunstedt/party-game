@@ -248,7 +248,7 @@ struct MinigameOption {
 
 /// One board game. All of it is plain data: clone it to snapshot, serialize it to save or to
 /// resync a reconnecting client, hash it ([`sim_core::checksum`]) to compare.
-#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Game {
     board: Board,
     rules: Rules,

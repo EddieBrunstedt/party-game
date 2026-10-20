@@ -21,8 +21,15 @@ const AUTO_CONTINUE_TICKS: u32 = 240;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Controller {
-    Human { gamepad: Pad, keyboard: bool },
+    Human {
+        gamepad: Pad,
+        keyboard: bool,
+    },
     Bot(Difficulty),
+    /// Played on another machine online: a person there, or (`bot`) one of the host's bots.
+    Remote {
+        bot: bool,
+    },
 }
 
 /// Which gamepad a human seat reads.
@@ -54,7 +61,10 @@ pub struct Seats(pub [Option<Controller>; MAX_PLAYERS]);
 
 impl Seats {
     pub fn is_bot(&self, seat: Seat) -> bool {
-        matches!(self.0[seat.index()], Some(Controller::Bot(_)))
+        matches!(
+            self.0[seat.index()],
+            Some(Controller::Bot(_) | Controller::Remote { bot: true })
+        )
     }
 
     pub fn is_human(&self, seat: Seat) -> bool {
@@ -400,8 +410,9 @@ fn step_run<M: Minigame>(
         return;
     }
 
+    // Remote seats are neutral until minigames go online (ROADMAP, Milestone 2).
     let mut inputs: [Input; MAX_PLAYERS] = std::array::from_fn(|i| match seats.0[i] {
-        None => Input::default(),
+        None | Some(Controller::Remote { .. }) => Input::default(),
         Some(Controller::Bot(difficulty)) => {
             M::bot_input(&active.run.game, Seat(i as u8), difficulty)
         }

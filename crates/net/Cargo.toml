@@ -6,11 +6,13 @@ publish.workspace = true
 
 [dependencies]
 sim-core.workspace = true
+sim-board.workspace = true
 ggrs.workspace = true
 serde.workspace = true
 bincode.workspace = true
 
 [dev-dependencies]
+minigame-registry.workspace = true
 minigame-quick-draw.workspace = true
 minigame-lantern-push.workspace = true
 minigame-firefly-catch.workspace = true

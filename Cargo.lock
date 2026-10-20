@@ -4120,7 +4120,9 @@ dependencies = [
  "minigame-firefly-catch",
  "minigame-lantern-push",
  "minigame-quick-draw",
+ "minigame-registry",
  "serde",
+ "sim-board",
  "sim-core",
 ]
 

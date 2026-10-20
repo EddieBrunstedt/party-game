@@ -4,9 +4,12 @@
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs, UdpSocket};
 
 use bevy::prelude::*;
+use net::board::BoardUpdate;
 use net::lobby::{LobbyAction, LobbyState, PeerId};
 use net::session::{Client, ClientEvent, Host, HostEvent, JoinRefusal, Start};
 use net::{Clock, Endpoint, EndpointConfig, Transport, UdpTransport};
+use sim_board::{Event, Game, Intent, Rejected};
+use sim_core::{Outcome, Seat};
 
 use crate::tr;
 
@@ -28,8 +31,18 @@ pub enum Online {
     Client(Client<NetTransport>),
 }
 
-/// Something the session reported this frame.
-#[derive(Debug, Clone, PartialEq)]
+pub struct OnlinePlugin;
+
+impl Plugin for OnlinePlugin {
+    fn build(&self, app: &mut App) {
+        app.add_message::<OnlineEvent>()
+            .add_systems(PreUpdate, poll.run_if(resource_exists::<Online>))
+            .add_systems(Update, leave_when_the_host_does);
+    }
+}
+
+/// Something the session reported. Every screen reads the ones it cares about.
+#[derive(Message, Debug, Clone, PartialEq)]
 pub enum OnlineEvent {
     Welcomed,
     Refused(JoinRefusal),
@@ -37,6 +50,34 @@ pub enum OnlineEvent {
     HostLeft,
     PeerJoined,
     PeerLeft,
+    /// Client: news of the host's board.
+    Board(BoardUpdate),
+    /// Host: a client decided for one of its seats.
+    Intent {
+        seat: Seat,
+        intent: Intent,
+    },
+    /// Host: a client's board went out of step and needs the whole game.
+    NeedSnapshot(PeerId),
+}
+
+/// Reads the network once a frame, before any screen looks at it.
+fn poll(mut online: ResMut<Online>, mut events: MessageWriter<OnlineEvent>) {
+    events.write_batch(online.poll());
+}
+
+/// Wherever this machine is (lobby, board, results), the host leaving ends the session.
+fn leave_when_the_host_does(
+    mut events: MessageReader<OnlineEvent>,
+    mut commands: Commands,
+    mut next_state: ResMut<NextState<crate::flow::AppState>>,
+) {
+    if events.read().any(|event| *event == OnlineEvent::HostLeft) {
+        commands.remove_resource::<Online>();
+        commands.remove_resource::<OnlineStart>();
+        commands.insert_resource(Notice(tr!("notice-host-left")));
+        next_state.set(crate::flow::AppState::Title);
+    }
 }
 
 impl Online {
@@ -83,6 +124,10 @@ impl Online {
                     HostEvent::Joined(_) => Some(OnlineEvent::PeerJoined),
                     HostEvent::Left(_) => Some(OnlineEvent::PeerLeft),
                     HostEvent::LobbyChanged => None,
+                    HostEvent::Intent { seat, intent } => {
+                        Some(OnlineEvent::Intent { seat, intent })
+                    }
+                    HostEvent::NeedSnapshot(peer) => Some(OnlineEvent::NeedSnapshot(peer)),
                 })
                 .collect(),
             Self::Client(client) => client
@@ -94,8 +139,34 @@ impl Online {
                     ClientEvent::Started(start) => Some(OnlineEvent::Started(start)),
                     ClientEvent::Refused(refusal) => Some(OnlineEvent::Refused(refusal)),
                     ClientEvent::HostLeft => Some(OnlineEvent::HostLeft),
+                    ClientEvent::Board(update) => Some(OnlineEvent::Board(update)),
                 })
                 .collect(),
+        }
+    }
+
+    /// Applies a decision to the board: the host applies it and tells everyone; a client sends it
+    /// to the host and applies nothing until the host's update comes back.
+    pub fn decide(
+        &self,
+        game: &mut Game,
+        seat: Seat,
+        intent: Intent,
+    ) -> Result<Vec<Event>, Rejected> {
+        match self {
+            Self::Host(host) => host.apply(game, seat, intent),
+            Self::Client(client) => {
+                client.send_intent(seat, intent);
+                Ok(Vec::new())
+            }
+        }
+    }
+
+    /// Host only: a minigame's outcome, applied and shared.
+    pub fn apply_outcome(&self, game: &mut Game, outcome: Outcome) -> Result<Vec<Event>, Rejected> {
+        match self {
+            Self::Host(host) => host.apply_outcome(game, outcome),
+            Self::Client(_) => Err(Rejected::NoMinigame),
         }
     }
 
@@ -194,12 +265,12 @@ impl Default for NetSettings {
 #[derive(Resource, Debug, Clone)]
 pub struct Notice(pub String);
 
-/// The host started the online session. The board protocol takes it from here.
+/// The host started the online session; a client waits here for the board's snapshot.
 #[derive(Resource, Debug, Clone)]
 pub struct OnlineStart(
     #[expect(
         dead_code,
-        reason = "the board protocol, next on the roadmap, reads it"
+        reason = "online minigames (next roadmap item) build their mesh from it"
     )]
     pub Start<SocketAddr>,
 );

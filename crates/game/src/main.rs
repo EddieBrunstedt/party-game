@@ -43,7 +43,7 @@ struct Cli {
     /// Skip the menus and start a board game with these seats.
     #[arg(long)]
     board: bool,
-    /// Board game length in rounds (default: the standard rules).
+    /// Board game length in rounds (default: the standard rules), also when hosting.
     #[arg(long)]
     rounds: Option<u32>,
     /// Total seats in play (2-4). Seats beyond `--humans` are bots.
@@ -232,6 +232,7 @@ fn main() {
         minigames::MinigamesPlugin,
         board_view::BoardViewPlugin,
         menus::MenusPlugin,
+        online::OnlinePlugin,
         particles::ParticlesPlugin,
     ));
     match &cli.minigame {
@@ -263,7 +264,7 @@ fn main() {
             app.insert_resource(board_view::BoardSession::new(game))
                 .insert_state(AppState::Board);
         }
-        None if cli.host => match menus::host_online(cli.port) {
+        None if cli.host => match menus::host_online(cli.port, cli.rounds) {
             Ok(online) => {
                 app.insert_resource(Seats([None; 4]))
                     .insert_resource(online)

@@ -1,14 +1,17 @@
 //! An online session from the lobby on: the [`Host`] keeps the real [`LobbyState`] and tells
 //! every [`Client`] about it; clients send their controllers' actions. Starting hands everyone
-//! the seed and every machine's address, for the minigames' full mesh.
+//! the seed and every machine's address, for the minigames' full mesh. Then the board phase:
+//! clients send intents for their seats, and the host applies them and sends [`BoardUpdate`]s.
 
 use std::collections::BTreeMap;
 
 use bincode::Options;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use sim_core::MAX_PLAYERS;
+use sim_board::{Event, Game, Intent, Rejected};
+use sim_core::{MAX_PLAYERS, Outcome, Seat, checksum};
 
+use crate::board::BoardUpdate;
 use crate::lobby::{LobbyAction, LobbyState, PeerId};
 use crate::{Endpoint, NetEvent, Refusal, Transport};
 
@@ -22,11 +25,19 @@ enum HostMessage<A> {
     Lobby(LobbyState),
     Start(Start<A>),
     Refused(JoinRefusal),
+    Board(BoardUpdate),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum ClientMessage {
     Act(LobbyAction),
+    /// A decision for a seat this machine plays.
+    Intent {
+        seat: Seat,
+        intent: Intent,
+    },
+    /// This machine's copy of the board went wrong; send the whole game.
+    NeedSnapshot,
 }
 
 /// What everyone needs to begin, sent by the host when it starts the session.
@@ -75,6 +86,10 @@ pub enum HostEvent {
     Left(PeerId),
     /// The lobby changed because of a client.
     LobbyChanged,
+    /// A client decided for one of its own seats. Apply it with [`Host::apply`].
+    Intent { seat: Seat, intent: Intent },
+    /// A client's board went wrong: answer with [`Host::send_snapshot`].
+    NeedSnapshot(PeerId),
 }
 
 pub struct Host<T: Transport> {
@@ -135,12 +150,24 @@ where
                     let Some(&peer) = self.clients.get(&addr) else {
                         continue;
                     };
-                    if let Some(ClientMessage::Act(action)) = decode(&bytes)
-                        && !self.started
-                        && self.lobby.apply(peer, action)
-                    {
-                        self.broadcast(&HostMessage::Lobby(self.lobby.clone()));
-                        events.push(HostEvent::LobbyChanged);
+                    match decode(&bytes) {
+                        Some(ClientMessage::Act(action)) => {
+                            if !self.started && self.lobby.apply(peer, action) {
+                                self.broadcast(&HostMessage::Lobby(self.lobby.clone()));
+                                events.push(HostEvent::LobbyChanged);
+                            }
+                        }
+                        // Only for seats that machine plays: the rest aren't its to decide.
+                        Some(ClientMessage::Intent { seat, intent }) => {
+                            let owner = self.lobby.seats[seat.index()].map(|claim| claim.peer);
+                            if self.started && owner == Some(peer) {
+                                events.push(HostEvent::Intent { seat, intent });
+                            }
+                        }
+                        Some(ClientMessage::NeedSnapshot) => {
+                            events.push(HostEvent::NeedSnapshot(peer))
+                        }
+                        None => {}
                     }
                 }
                 NetEvent::Disconnected(addr) => {
@@ -200,6 +227,51 @@ where
         start
     }
 
+    /// Sends every client the whole game, to start the board phase.
+    pub fn share_game(&self, game: &Game) {
+        self.broadcast(&HostMessage::Board(BoardUpdate::Snapshot(Box::new(
+            game.clone(),
+        ))));
+    }
+
+    /// Sends one client the whole game.
+    pub fn send_snapshot(&self, peer: PeerId, game: &Game) {
+        if let Some((addr, _)) = self.clients.iter().find(|(_, id)| **id == peer) {
+            let message =
+                HostMessage::<T::Addr>::Board(BoardUpdate::Snapshot(Box::new(game.clone())));
+            let _ = self.endpoint.send(*addr, &encode(&message));
+        }
+    }
+
+    /// Applies a decision to the real game and tells every client. Clients' intents come from
+    /// [`HostEvent::Intent`]; the host's own players' and bots' come straight here.
+    pub fn apply(
+        &self,
+        game: &mut Game,
+        seat: Seat,
+        intent: Intent,
+    ) -> Result<Vec<Event>, Rejected> {
+        let events = game.apply(seat, intent)?;
+        let checksum = checksum(game);
+        self.broadcast(&HostMessage::Board(BoardUpdate::Applied {
+            seat,
+            intent,
+            checksum,
+        }));
+        Ok(events)
+    }
+
+    /// Applies a minigame's outcome to the real game and tells every client.
+    pub fn apply_outcome(&self, game: &mut Game, outcome: Outcome) -> Result<Vec<Event>, Rejected> {
+        let events = game.apply_minigame_outcome(outcome)?;
+        let checksum = checksum(game);
+        self.broadcast(&HostMessage::Board(BoardUpdate::Outcome {
+            outcome,
+            checksum,
+        }));
+        Ok(events)
+    }
+
     /// Says goodbye to every client.
     pub fn close(self) {
         for addr in self.clients.keys() {
@@ -225,6 +297,8 @@ pub enum ClientEvent<A> {
     Refused(JoinRefusal),
     /// The host closed the session or quit.
     HostLeft,
+    /// News from the board: apply it with [`crate::board::follow`] (or take the snapshot).
+    Board(BoardUpdate),
 }
 
 pub struct Client<T: Transport> {
@@ -273,6 +347,19 @@ where
             .send(self.host, &encode(&ClientMessage::Act(action)));
     }
 
+    /// Decides for one of this machine's seats. Nothing changes until the host's update comes back.
+    pub fn send_intent(&self, seat: Seat, intent: Intent) {
+        let message = ClientMessage::Intent { seat, intent };
+        let _ = self.endpoint.send(self.host, &encode(&message));
+    }
+
+    /// Asks for the whole game, when this machine's copy no longer matches the host's.
+    pub fn request_snapshot(&self) {
+        let _ = self
+            .endpoint
+            .send(self.host, &encode(&ClientMessage::NeedSnapshot));
+    }
+
     pub fn poll(&mut self) -> Vec<ClientEvent<T::Addr>> {
         let mut events = Vec::new();
         for event in self.endpoint.poll() {
@@ -292,6 +379,7 @@ where
                             self.endpoint.disconnect(self.host);
                             events.push(ClientEvent::Refused(refusal));
                         }
+                        Some(HostMessage::Board(update)) => events.push(ClientEvent::Board(update)),
                         None => {}
                     }
                 }

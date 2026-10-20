@@ -2,12 +2,13 @@
 //! [`Endpoint`] on top that does the version handshake, a reliable ordered channel for board
 //! messages, and the `ggrs` socket for minigames, all over the same transport.
 //! [`rollback::Rollback`] drives any minigame through `ggrs` on top of it, and [`check`] is the
-//! headless online quality bar. [`lobby`] holds the join screen's rules and [`session`] the
-//! host and client that share them.
+//! headless online quality bar. [`lobby`] holds the join screen's rules, [`session`] the host
+//! and client that share them, and [`board`] how clients follow the host's board.
 //!
 //! This is not simulation code, so it may use the wall clock, but only through [`Clock`], which
 //! tests replace with a manual one so that delays and resends are reproducible.
 
+pub mod board;
 pub mod check;
 mod clock;
 mod endpoint;
@@ -32,7 +33,7 @@ pub use udp::UdpTransport;
 
 /// Bumped by hand whenever the wire format changes (frames here, or board protocol messages).
 /// Peers with a different protocol or game version refuse each other at the handshake.
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// Moves whole datagrams between addresses, with no promises: they may be lost, duplicated,
 /// delayed or reordered. Everything reliable is built on top, in [`Endpoint`].
