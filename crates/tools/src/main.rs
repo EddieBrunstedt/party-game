@@ -1,6 +1,7 @@
 //! Headless developer tools: run the automated quality bars and bot-only matches from the CLI.
 
 use clap::{Parser, Subcommand, ValueEnum};
+use minigame_firefly_catch::FireflyCatch;
 use minigame_quick_draw::QuickDraw;
 use sim_check::Setup;
 use sim_core::{Difficulty, Minigame, Seat};
@@ -34,6 +35,7 @@ enum Command {
 #[derive(Clone, Copy, ValueEnum)]
 enum MinigameId {
     QuickDraw,
+    FireflyCatch,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -85,6 +87,7 @@ fn main() {
     let result = match Cli::parse().command {
         Command::Check { minigame, seeds } => match minigame {
             MinigameId::QuickDraw => check::<QuickDraw>(seeds),
+            MinigameId::FireflyCatch => check::<FireflyCatch>(seeds),
         },
         Command::Bots {
             minigame,
@@ -93,6 +96,7 @@ fn main() {
             difficulty,
         } => match minigame {
             MinigameId::QuickDraw => bots::<QuickDraw>(runs, players, difficulty.into()),
+            MinigameId::FireflyCatch => bots::<FireflyCatch>(runs, players, difficulty.into()),
         },
     };
     if let Err(message) = result {
