@@ -9,7 +9,7 @@ use minigame_lantern_push::LanternPush;
 use minigame_quick_draw::QuickDraw;
 use net::check::{OnlineMatch, deal_seats, play_online};
 use net::{Faults, MemoryAddr, MemoryNetwork};
-use sim_core::{Difficulty, Format, Minigame, PlayerSetup, Seat};
+use sim_core::{Difficulty, Format, Minigame, PlayerSetup, RunConfig, Seat};
 
 const LAGGY: Faults = Faults {
     loss_percent: 5,
@@ -27,6 +27,7 @@ fn play<M: Minigame>(players: usize, format: Format, peers: u16) {
         players: PlayerSetup::first(players),
         format,
         difficulty: Difficulty::Hard,
+        config: RunConfig::default(),
         faults: LAGGY,
     };
     let report = play_online::<M, _>(transports, &addrs, setup).unwrap();

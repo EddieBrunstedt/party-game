@@ -111,7 +111,7 @@ impl Plugin for ScriptedKeysPlugin {
 }
 
 /// Parses `SECS:KEY`, e.g. `2.5:Space`. Keys: Space, Enter, Escape, Arrow{Up,Down,Left,Right},
-/// or a letter.
+/// or one of the letters J, K, L, I.
 pub fn parse_key_press(text: &str) -> Result<(f32, KeyCode), String> {
     let (secs, key) = text
         .split_once(':')
@@ -130,6 +130,7 @@ pub fn parse_key_press(text: &str) -> Result<(f32, KeyCode), String> {
         "J" => KeyCode::KeyJ,
         "K" => KeyCode::KeyK,
         "L" => KeyCode::KeyL,
+        "I" => KeyCode::KeyI,
         other => return Err(format!("unknown key {other:?}")),
     };
     Ok((secs, key))

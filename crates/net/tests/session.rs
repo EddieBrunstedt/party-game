@@ -114,8 +114,10 @@ fn clients_join_pick_leave_and_start() {
         local: 1,
         next: true,
     });
-    // A client can't change the host's settings.
+    // A client can't change the host's settings, and every machine sees the host's.
     a.act(LobbyAction::CycleBots);
+    a.act(LobbyAction::TogglePauseOnControllerLost);
+    world.host.act(LobbyAction::TogglePauseOnControllerLost);
     world.run(&mut [&mut a, &mut b], &mut events, |world, _, _| {
         world.host.lobby().seats.iter().flatten().count() == 4
     });
@@ -125,6 +127,7 @@ fn clients_join_pick_leave_and_start() {
     let lobby = world.host.lobby().clone();
     assert_eq!(lobby.seat_of(PeerId::HOST, 0), Some(Seat(0)));
     assert_eq!(lobby.bots, Difficulty::Normal);
+    assert!(lobby.run_config().pause_on_controller_lost);
     let mut characters = lobby.roster();
     characters.sort();
     assert_eq!(

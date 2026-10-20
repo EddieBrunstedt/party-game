@@ -142,6 +142,12 @@ where
         &self.run
     }
 
+    /// Ticks simulated in the newest state. Local input given to the next [`Rollback::update`]
+    /// is for this tick, and takes effect [`INPUT_DELAY`] ticks later on every machine.
+    pub fn tick(&self) -> u32 {
+        self.frame as u32
+    }
+
     /// The seats this machine sends input for.
     pub fn local_seats(&self) -> &[Seat] {
         &self.local

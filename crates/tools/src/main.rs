@@ -1,5 +1,9 @@
 //! Headless developer tools: run the automated quality bars (offline and online), bot-only
-//! minigame matches and whole bot-only board games from the CLI.
+//! minigame matches and whole bot-only board games from the CLI, plus a scripted virtual
+//! gamepad for windowed runs.
+
+#[cfg(target_os = "linux")]
+mod fake_pad;
 
 use std::time::Duration;
 
@@ -73,6 +77,16 @@ enum Command {
         #[arg(long)]
         verbose: bool,
     },
+    /// Plug in a virtual gamepad (Linux uinput), press its buttons and unplug and replug it on
+    /// a schedule, then unplug it and exit.
+    FakePad {
+        /// `SECS:WHAT` after start (repeatable): A, B, X, Y, Start, unplug or plug.
+        #[arg(long = "at")]
+        steps: Vec<String>,
+        /// Seconds after start to unplug and exit.
+        #[arg(long)]
+        until: f32,
+    },
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -145,6 +159,7 @@ fn net_check(id: &str, seeds: u64, faults: Faults) -> Result<(), String> {
                     players: setup.players,
                     format: setup.format,
                     difficulty: DIFFICULTIES[seed as usize % DIFFICULTIES.len()],
+                    config: setup.config,
                     faults,
                 };
                 let report = play(online, peers)?;
@@ -330,6 +345,20 @@ fn print_rounds(summary: &Summary) {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn fake_pad(steps: &[String], until: f32) -> Result<(), String> {
+    let steps = steps
+        .iter()
+        .map(|step| fake_pad::parse_step(step))
+        .collect::<Result<_, _>>()?;
+    fake_pad::run(steps, until)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn fake_pad(_: &[String], _: f32) -> Result<(), String> {
+    Err("fake-pad needs Linux (uinput)".into())
+}
+
 fn main() {
     let result = match Cli::parse().command {
         Command::Check { minigame, seeds } => check(&minigame, seeds),
@@ -363,6 +392,7 @@ fn main() {
             rounds,
             verbose,
         } => board(seed, players, difficulty.into(), rounds, verbose),
+        Command::FakePad { steps, until } => fake_pad(&steps, until),
     };
     if let Err(message) = result {
         eprintln!("{message}");

@@ -60,6 +60,7 @@ struct Cli {
     #[arg(long)]
     seed: Option<u64>,
     /// Halt the minigame while any controller is unplugged (default: that seat just goes idle).
+    /// Also where the join screen's setting starts, when hosting.
     #[arg(long)]
     pause_on_controller_lost: bool,
     /// Take a screenshot this many seconds after start (repeatable), then exit.
@@ -231,6 +232,7 @@ fn main() {
     )
     .insert_resource(Time::<Fixed>::from_hz(TICK_HZ as f64))
     .insert_resource(Seats(seats))
+    .insert_resource(runner::RunRules(setup.config))
     .insert_resource(net_settings)
     .init_resource::<characters::Roster>()
     .add_plugins((
@@ -282,7 +284,8 @@ fn main() {
                 .insert_state(AppState::Board);
         }
         None if cli.host => {
-            match menus::host_online(&net_settings, menus::PlayMode::Board, cli.rounds) {
+            let (mode, rounds) = (menus::PlayMode::Board, cli.rounds);
+            match menus::host_online(&net_settings, mode, rounds, setup.config) {
                 Ok(online) => {
                     app.insert_resource(Seats([None; 4]))
                         .insert_resource(online)

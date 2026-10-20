@@ -5802,6 +5802,7 @@ name = "tools"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "libc",
  "minigame-firefly-catch",
  "minigame-lantern-push",
  "minigame-quick-draw",

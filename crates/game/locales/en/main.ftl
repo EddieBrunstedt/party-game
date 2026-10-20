@@ -38,8 +38,11 @@ join-hosting-here = 127.0.0.1:{ $port } (this PC)
 join-hosting-lan = { $address }:{ $port } (local network)
 join-hosting-tailscale = { $address }:{ $port } (Tailscale)
 join-connected = Connected to { $address }
-join-host-settings = Bots: { $difficulty }   Rounds: { $rounds }   (the host chooses)
-join-host-settings-free-play = Bots: { $difficulty }   (the host chooses)
+join-pause = Pause when a controller disconnects: { $pause } (Y)
+join-pause-on = On
+join-pause-off = Off
+join-host-settings = Bots: { $difficulty }   Rounds: { $rounds }   Pause when a controller disconnects: { $pause }   (the host chooses)
+join-host-settings-free-play = Bots: { $difficulty }   Pause when a controller disconnects: { $pause }   (the host chooses)
 join-waiting-host = Waiting for the host to press Start
 join-starting = Starting...
 

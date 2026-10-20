@@ -8,7 +8,9 @@
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
-use sim_core::{Difficulty, Format, MAX_PLAYERS, Minigame, Outcome, PlayerSetup, Run, RunConfig};
+use sim_core::{
+    Difficulty, Format, Input, MAX_PLAYERS, Minigame, Outcome, PlayerSetup, Run, RunConfig, Seat,
+};
 
 use crate::rollback::{Rollback, RollbackEvent, SeatOwner};
 use crate::{Clock, Endpoint, EndpointConfig, Faults, Faulty, Transport};
@@ -21,6 +23,7 @@ pub struct OnlineMatch {
     pub players: PlayerSetup,
     pub format: Format,
     pub difficulty: Difficulty,
+    pub config: RunConfig,
     /// What every link does to datagrams, in both directions.
     pub faults: Faults,
 }
@@ -35,6 +38,8 @@ pub struct OnlineReport {
     /// Rollbacks per peer, and the most ticks one of them replayed.
     pub rollbacks: Vec<u32>,
     pub max_resimulated: u32,
+    /// The run's checksum after each tick from 0 to `ticks`, the same on every peer.
+    pub checksums: Vec<u64>,
 }
 
 /// Which machine sends each seat's input: active seats are dealt out round-robin, so with
@@ -54,6 +59,19 @@ pub fn play_online<M: Minigame, T: Transport>(
     transports: Vec<T>,
     addrs: &[T::Addr],
     setup: OnlineMatch,
+) -> Result<OnlineReport, String> {
+    play_online_with::<M, T>(transports, addrs, setup, |seat, _, run| {
+        M::bot_input(&run.game, seat, setup.difficulty)
+    })
+}
+
+/// [`play_online`] with every seat's input from `input(seat, tick, newest run)`, called by the
+/// machine that owns the seat for the tick it sends input for (see [`Rollback::tick`]).
+pub fn play_online_with<M: Minigame, T: Transport>(
+    transports: Vec<T>,
+    addrs: &[T::Addr],
+    setup: OnlineMatch,
+    mut input: impl FnMut(Seat, u32, &Run<M>) -> Input,
 ) -> Result<OnlineReport, String> {
     let peers = transports.len();
     assert_eq!(peers, addrs.len());
@@ -98,12 +116,7 @@ pub fn play_online<M: Minigame, T: Transport>(
             _ if owner == me => SeatOwner::Local,
             _ => SeatOwner::Remote(addrs[owner]),
         });
-        let run = Run::<M>::new(
-            setup.seed,
-            setup.players,
-            setup.format,
-            RunConfig::default(),
-        );
+        let run = Run::<M>::new(setup.seed, setup.players, setup.format, setup.config);
         let session = Rollback::start(run, seats, endpoint).map_err(|e| e.to_string())?;
         sessions.push(session);
     }
@@ -120,8 +133,8 @@ pub fn play_online<M: Minigame, T: Transport>(
         }
         for (me, session) in sessions.iter_mut().enumerate() {
             endpoints[me].poll();
-            let advance =
-                session.update(|seat, run| M::bot_input(&run.game, seat, setup.difficulty));
+            let tick = session.tick();
+            let advance = session.update(|seat, run| input(seat, tick, run));
             if advance.resimulated > 0 {
                 rollbacks[me] += 1;
                 max_resimulated = max_resimulated.max(advance.resimulated);
@@ -194,5 +207,6 @@ pub fn play_online<M: Minigame, T: Transport>(
         compared: ticks + 1,
         rollbacks,
         max_resimulated,
+        checksums: (0..=ticks).map(|tick| checksums[0][&tick]).collect(),
     })
 }

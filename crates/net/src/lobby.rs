@@ -4,7 +4,7 @@
 //! show what it sends back.
 
 use serde::{Deserialize, Serialize};
-use sim_core::{Difficulty, MAX_PLAYERS, Seat};
+use sim_core::{Difficulty, MAX_PLAYERS, RunConfig, Seat};
 
 /// A machine in the session. The host is always 0; the host numbers the others as they join.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -38,11 +38,12 @@ pub enum LobbyAction {
     Leave {
         local: u8,
     },
-    /// Host only, like [`LobbyAction::Rounds`].
+    /// Host only, like [`LobbyAction::Rounds`] and [`LobbyAction::TogglePauseOnControllerLost`].
     CycleBots,
     Rounds {
         longer: bool,
     },
+    TogglePauseOnControllerLost,
 }
 
 /// Board lengths the join screen offers.
@@ -54,6 +55,8 @@ pub struct LobbyState {
     /// How well the bots in empty seats play.
     pub bots: Difficulty,
     pub rounds: u32,
+    /// Minigames halt for everyone while any player's controller is unplugged.
+    pub pause_on_controller_lost: bool,
     /// Free play (a minigame picker) instead of a board game.
     pub free_play: bool,
     /// How many characters there are to pick from.
@@ -70,8 +73,16 @@ impl LobbyState {
             seats: [None; MAX_PLAYERS],
             bots: Difficulty::Normal,
             rounds,
+            pause_on_controller_lost: false,
             free_play,
             characters,
+        }
+    }
+
+    /// The rules every machine runs this session's minigames with.
+    pub fn run_config(&self) -> RunConfig {
+        RunConfig {
+            pause_on_controller_lost: self.pause_on_controller_lost,
         }
     }
 
@@ -154,7 +165,13 @@ impl LobbyState {
                 self.rounds = ROUND_CHOICES[at];
                 true
             }
-            LobbyAction::CycleBots | LobbyAction::Rounds { .. } => false,
+            LobbyAction::TogglePauseOnControllerLost if peer == PeerId::HOST => {
+                self.pause_on_controller_lost = !self.pause_on_controller_lost;
+                true
+            }
+            LobbyAction::CycleBots
+            | LobbyAction::Rounds { .. }
+            | LobbyAction::TogglePauseOnControllerLost => false,
         }
     }
 
@@ -295,6 +312,10 @@ mod tests {
         let mut lobby = lobby();
         assert!(!lobby.apply(THEM, LobbyAction::CycleBots));
         assert!(!lobby.apply(THEM, LobbyAction::Rounds { longer: true }));
+        assert!(!lobby.apply(THEM, LobbyAction::TogglePauseOnControllerLost));
+        assert!(!lobby.run_config().pause_on_controller_lost);
+        assert!(lobby.apply(ME, LobbyAction::TogglePauseOnControllerLost));
+        assert!(lobby.run_config().pause_on_controller_lost);
         assert!(lobby.apply(ME, LobbyAction::CycleBots));
         assert_eq!(lobby.bots, Difficulty::Hard);
         assert!(lobby.apply(ME, LobbyAction::Rounds { longer: true }));

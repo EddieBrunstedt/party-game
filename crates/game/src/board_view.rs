@@ -20,7 +20,7 @@ use crate::i18n::{bot_tag, names};
 use crate::online::{Online, OnlineEvent};
 use crate::palette::{LANTERN_WARM, MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
 use crate::particles::{self, Effects, hdr};
-use crate::runner::{Controller, RunSetup, SeatInputs, Seats};
+use crate::runner::{Controller, RunRules, RunSetup, SeatInputs, Seats};
 use crate::scenery::{
     emissive_material, night_camera, noise, spawn_fireflies, spawn_lantern_folk,
     spawn_paper_lantern,
@@ -304,6 +304,7 @@ fn decide(
     inputs: Res<SeatInputs>,
     mut session: ResMut<BoardSession>,
     online: Option<Res<Online>>,
+    rules: Res<RunRules>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     if !session.idle() || session.sent {
@@ -331,7 +332,7 @@ fn decide(
                     seed: plan.seed,
                     players: plan.players,
                     format: plan.format,
-                    config: default(),
+                    config: rules.0,
                 },
                 origin: Origin::Board,
             });

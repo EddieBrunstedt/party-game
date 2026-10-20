@@ -13,7 +13,7 @@ use bevy::prelude::*;
 use net::lobby::{LobbyAction, LobbyState, PeerId};
 use net::session::Launch;
 use sim_board::{Board, Game, Rules};
-use sim_core::{Difficulty, Format, FormatKind, MAX_PLAYERS, PlayerSetup, Seat};
+use sim_core::{Difficulty, Format, FormatKind, MAX_PLAYERS, PlayerSetup, RunConfig, Seat};
 
 use crate::audio::{Sfx, Sound};
 use crate::board_view::{BoardSession, format_text, minigame_title};
@@ -21,7 +21,7 @@ use crate::characters::{Character, Pose, Roster};
 use crate::flow::{AppState, MinigameLaunch, Origin};
 use crate::online::{self, NetSettings, Notice, Online, OnlineEvent, OnlineStart};
 use crate::palette::{MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
-use crate::runner::{Controller, Pad, RunSetup, Seats};
+use crate::runner::{Controller, Pad, RunRules, RunSetup, Seats};
 use crate::scenery::{night_camera, spawn_fireflies, spawn_lantern_folk, spawn_paper_lantern};
 use crate::{GAME_TITLE, minigames, tr};
 
@@ -77,6 +77,8 @@ pub struct Nav {
     pub back: bool,
     pub start: bool,
     pub extra: bool,
+    /// Y on a pad (I on the keyboard).
+    pub alt: bool,
     pub up: bool,
     pub down: bool,
     pub left: bool,
@@ -96,6 +98,7 @@ impl DeviceNav {
             all.back |= nav.back;
             all.start |= nav.start;
             all.extra |= nav.extra;
+            all.alt |= nav.alt;
             all.up |= nav.up;
             all.down |= nav.down;
             all.left |= nav.left;
@@ -120,6 +123,7 @@ fn read_devices(
             back: key(&[KeyCode::KeyK, KeyCode::Escape, KeyCode::Backspace]),
             start: key(&[KeyCode::Enter]),
             extra: key(&[KeyCode::KeyL]),
+            alt: key(&[KeyCode::KeyI]),
             up: key(&[KeyCode::KeyW, KeyCode::ArrowUp]),
             down: key(&[KeyCode::KeyS, KeyCode::ArrowDown]),
             left: key(&[KeyCode::KeyA, KeyCode::ArrowLeft]),
@@ -138,6 +142,7 @@ fn read_devices(
                 back: pad.just_pressed(GamepadButton::East),
                 start: pad.just_pressed(GamepadButton::Start),
                 extra: pad.just_pressed(GamepadButton::West),
+                alt: pad.just_pressed(GamepadButton::North),
                 up: pad.just_pressed(GamepadButton::DPadUp) || flick(stick.y, before.y, 1.0),
                 down: pad.just_pressed(GamepadButton::DPadDown) || flick(stick.y, before.y, -1.0),
                 left: pad.just_pressed(GamepadButton::DPadLeft) || flick(stick.x, before.x, -1.0),
@@ -357,14 +362,15 @@ fn spawn_title(
 }
 
 /// Starts hosting a board game (of `rounds`, or the standard length) or free play, or says
-/// why it couldn't.
+/// why it couldn't. `rules` are where the lobby's settings start.
 pub fn host_online(
     settings: &NetSettings,
     mode: PlayMode,
     rounds: Option<u32>,
+    rules: RunConfig,
 ) -> Result<Online, Notice> {
     let port = settings.port;
-    let mut lobby = Lobby::new(mode).state;
+    let mut lobby = Lobby::new(mode, rules).state;
     lobby.rounds = rounds.unwrap_or(lobby.rounds).max(1);
     Online::host(port, lobby, settings).map_err(|e| {
         Notice(tr!(
@@ -382,6 +388,7 @@ fn title_menu(
     mut items: Query<(&TitleItem, &mut Text, &mut TextColor)>,
     mut mode: ResMut<PlayMode>,
     settings: Res<NetSettings>,
+    rules: Res<RunRules>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
     mut exit: MessageWriter<AppExit>,
@@ -402,7 +409,7 @@ fn title_menu(
         sfx.play(Sound::Confirm);
         let mut host = |play: PlayMode| {
             *mode = play;
-            match host_online(&settings, play, None) {
+            match host_online(&settings, play, None, rules.0) {
                 Ok(online) => {
                     commands.insert_resource(online);
                     next_state.set(AppState::Join);
@@ -469,12 +476,13 @@ pub struct Lobby {
 }
 
 impl Lobby {
-    fn new(mode: PlayMode) -> Self {
-        let state = LobbyState::new(
+    fn new(mode: PlayMode, rules: RunConfig) -> Self {
+        let mut state = LobbyState::new(
             Character::ALL.len() as u8,
             Rules::default().rounds,
             mode == PlayMode::FreePlay,
         );
+        state.pause_on_controller_lost = rules.pause_on_controller_lost;
         Self {
             state,
             devices: Vec::new(),
@@ -537,11 +545,12 @@ fn spawn_join(
     mode: Res<PlayMode>,
     existing: Option<Res<Lobby>>,
     online: Option<Res<Online>>,
+    rules: Res<RunRules>,
 ) {
     // Coming back from the free-play picker keeps everyone joined; the title starts afresh.
     let mut lobby = existing
         .map(|l| l.clone())
-        .unwrap_or_else(|| Lobby::new(*mode));
+        .unwrap_or_else(|| Lobby::new(*mode, rules.0));
     if let Some(state) = online.as_ref().and_then(|o| o.lobby()) {
         lobby.state = state.clone();
     }
@@ -645,6 +654,10 @@ fn join_lobby(
                     actions.push(LobbyAction::CycleBots);
                     sfx.play(Sound::Move);
                 }
+                if host && press.alt {
+                    actions.push(LobbyAction::TogglePauseOnControllerLost);
+                    sfx.play(Sound::Move);
+                }
                 if host && *mode == PlayMode::Board && (press.up || press.down) {
                     actions.push(LobbyAction::Rounds { longer: press.up });
                     sfx.play(Sound::Move);
@@ -676,6 +689,7 @@ fn join_lobby(
     sfx.play(Sound::Confirm);
     commands.insert_resource(lobby.seats(PeerId::HOST));
     commands.insert_resource(lobby.roster());
+    commands.insert_resource(RunRules(lobby.state.run_config()));
     let seed = wall_clock_seed();
     if let Some(Online::Host(session)) = online.as_deref_mut() {
         let others = session.start(seed).clients.len();
@@ -744,6 +758,8 @@ fn react_to_online(
                     commands.insert_resource(lobby.seats(me));
                     commands.insert_resource(lobby.roster());
                 }
+                // Every machine plays the session's minigames by the host's rules.
+                commands.insert_resource(RunRules(start.lobby.run_config()));
                 commands.insert_resource(OnlineStart);
                 if start.lobby.free_play {
                     // The host picks; this machine waits on the picker for its launch.
@@ -815,6 +831,11 @@ fn show_lobby(
     let me = online.as_ref().and_then(|o| o.me()).unwrap_or(PeerId::HOST);
     let host = me == PeerId::HOST;
     let difficulty = tr!(difficulty_key(lobby.state.bots));
+    let pause = if lobby.state.pause_on_controller_lost {
+        tr!("join-pause-on")
+    } else {
+        tr!("join-pause-off")
+    };
     // Finding this machine's addresses asks the OS, so do it once per visit.
     if status.is_none() || lobby.is_added() {
         *status = Some(online_status(online.as_deref(), settings.port));
@@ -848,13 +869,15 @@ fn show_lobby(
                     let settings = if lobby.state.free_play {
                         tr!(
                             "join-host-settings-free-play",
-                            difficulty = difficulty.clone()
+                            difficulty = difficulty.clone(),
+                            pause = pause.clone()
                         )
                     } else {
                         tr!(
                             "join-host-settings",
                             difficulty = difficulty.clone(),
-                            rounds = lobby.state.rounds
+                            rounds = lobby.state.rounds,
+                            pause = pause.clone()
                         )
                     };
                     format!("{settings}\n{}", tr!("join-waiting-host"))
@@ -869,8 +892,9 @@ fn show_lobby(
                         String::new()
                     };
                     format!(
-                        "{}   {rounds}\n{start}",
-                        tr!("join-bots", difficulty = difficulty.clone())
+                        "{}   {rounds}   {}\n{start}",
+                        tr!("join-bots", difficulty = difficulty.clone()),
+                        tr!("join-pause", pause = pause.clone())
                     )
                 }
             }
@@ -1214,6 +1238,7 @@ fn spawn_pick(
 fn pick_minigame(
     nav: Res<DeviceNav>,
     seats: Res<Seats>,
+    rules: Res<RunRules>,
     online: Option<Res<Online>>,
     mut menu: ResMut<PickMenu>,
     mut text: Query<&mut Text, (With<PickText>, Without<PickHint>)>,
@@ -1265,7 +1290,7 @@ fn pick_minigame(
             seed: wall_clock_seed(),
             players,
             format: formats[menu.format],
-            config: default(),
+            config: rules.0,
         };
         let id = entries[menu.minigame].id.to_string();
         if let Some(Online::Host(session)) = online.as_deref() {
@@ -1411,7 +1436,7 @@ mod tests {
 
     #[test]
     fn devices_keep_their_seats_and_characters() {
-        let mut lobby = Lobby::new(PlayMode::Board);
+        let mut lobby = Lobby::new(PlayMode::Board, RunConfig::default());
         let pad = Device::Pad(Entity::PLACEHOLDER);
         join(&mut lobby, pad);
         join(&mut lobby, Device::Keyboard);
@@ -1435,7 +1460,7 @@ mod tests {
 
     #[test]
     fn unjoined_seats_become_bots() {
-        let mut lobby = Lobby::new(PlayMode::Board);
+        let mut lobby = Lobby::new(PlayMode::Board, RunConfig::default());
         lobby.state.bots = Difficulty::Hard;
         join(&mut lobby, Device::Keyboard);
         let seats = lobby.seats(PeerId::HOST);

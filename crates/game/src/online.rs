@@ -14,7 +14,7 @@ use sim_board::{Event, Game, Intent, Rejected};
 use sim_core::{MAX_PLAYERS, Outcome, Seat};
 
 use crate::flow::{AppState, MinigameLaunch, Origin};
-use crate::runner::RunSetup;
+use crate::runner::{RunRules, RunSetup};
 use crate::tr;
 
 /// Picked at runtime, so `--net-delay` can wrap UDP in fault injection.
@@ -98,6 +98,7 @@ fn note_ready(mut events: MessageReader<OnlineEvent>, mut ready: ResMut<RemoteRe
 /// Free play online, on a client: play what the host launches, wait while it picks.
 fn follow_free_play(
     mut events: MessageReader<OnlineEvent>,
+    rules: Res<RunRules>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
@@ -110,7 +111,7 @@ fn follow_free_play(
                         seed: launch.seed,
                         players: launch.players,
                         format: launch.format,
-                        config: default(),
+                        config: rules.0,
                     },
                     origin: Origin::FreePlay,
                 });

@@ -76,6 +76,11 @@ impl Seats {
     }
 }
 
+/// The rules this session's minigames run by: from the command line, then from the lobby's
+/// settings when a game starts (online, the host's lobby, so every machine agrees).
+#[derive(Resource, Debug, Clone, Copy, Default)]
+pub struct RunRules(pub RunConfig);
+
 #[derive(Debug, Clone, Copy)]
 pub struct RunSetup {
     pub seed: u64,
@@ -434,6 +439,13 @@ fn step_run<M: Minigame>(
     let outcome = if let Some(rollback) = active.rollback.as_mut() {
         // Keep exchanging inputs even after the end, so slower machines can confirm it too.
         let advance = rollback.update(&mut input_for);
+        if !advance.new_tick && rollback.confirmed_outcome().is_none() {
+            // No tick took this machine's input (still synchronizing, or waiting for slower
+            // machines): keep the taps for the next one, or a quick Start would never pause.
+            for (kept, taps) in latch.0.iter_mut().zip(latched) {
+                *kept |= taps;
+            }
+        }
         net_stats.record(advance.resimulated, rollback.pings());
         for event in rollback.events() {
             match event {
