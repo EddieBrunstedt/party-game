@@ -18,4 +18,4 @@ Read `docs/DESIGN.md` before designing anything. Read the matching ADR in `docs/
 ## Gotchas
 
 - Bevy 0.20 and ggrs 0.13 postdate Claude's training data. Check APIs against the source in `~/.cargo/registry/src/*/bevy_*-0.20.0/` before writing code that uses them.
-- Check visual work yourself. `cargo run -p game -- --humans 0 --seed 1 --screenshot-dir <dir> --screenshot-at <secs>` (repeatable) saves PNGs and exits; `magick montage` turns several into one contact sheet to view. If windowed runs hang with no frames (the screen is idle or locked), run the same command under `gamescope --backend headless -w 1280 -h 800 -W 1280 -H 800 -- ./target/debug/game ...`.
+- Check visual work yourself. `cargo run -p game -- --humans 0 --seed 1 --screenshot-dir <dir> --screenshot-at <secs>` (repeatable) saves PNGs and exits; `magick montage` turns several into one contact sheet to view. If windowed runs hang with no frames (the screen is idle or locked), run the same command under `gamescope --backend headless -w 1280 -h 800 -W 1280 -H 800 -- ./target/debug/game ...`. Wrap it in `timeout -k 10 <secs>`: gamescope occasionally ignores the plain TERM.
