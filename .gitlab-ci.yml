@@ -8,7 +8,8 @@ default:
 variables:
   CARGO_HOME: $CI_PROJECT_DIR/.cargo-home
   CARGO_TERM_COLOR: always
-  # No assets are needed to build or test; don't pull LFS objects.
+  # Don't pull LFS objects on checkout; the job pulls only the game's runtime assets, which
+  # tests read (Blender sources and other art stay as pointers).
   GIT_LFS_SKIP_SMUDGE: "1"
 
 stages:
@@ -28,7 +29,8 @@ check:
     # Native libraries Bevy links against on Linux (audio, gamepads, windowing).
     - apt-get update -qq
     - apt-get install -y -qq --no-install-recommends
-      pkg-config libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+      pkg-config libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev git-lfs
+    - git lfs pull --include="crates/game/assets/**"
     - rustup component add clippy
     - rustc --version && cargo --version
   script:

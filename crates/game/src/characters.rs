@@ -309,6 +309,10 @@ mod tests {
     fn gltf_json(path: &str) -> String {
         let full = format!("{}/assets/{path}", env!("CARGO_MANIFEST_DIR"));
         let bytes = std::fs::read(&full).unwrap_or_else(|e| panic!("{full}: {e}"));
+        assert!(
+            bytes.starts_with(b"glTF"),
+            "{full} isn't a .glb; if it's a Git LFS pointer, run `git lfs pull`"
+        );
         let len = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
         String::from_utf8(bytes[20..20 + len].to_vec()).unwrap()
     }

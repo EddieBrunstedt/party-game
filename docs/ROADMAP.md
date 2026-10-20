@@ -86,7 +86,8 @@ A fun problem found at the playable stage gets fixed straight away; polish won't
   - Surprise: glTF scenes are `WorldAsset`s in Bevy 0.20 (`WorldAssetRoot`, `On<WorldInstanceReady>`), and lifecycle observers are `On<Add<T>>`.
   - Surprise: Bevy looks for `assets/` beside the executable unless run through cargo, so a dev binary started directly (the gamescope command) found no models. `main.rs` now falls back to the crate's own `assets/`.
   - Fixed on the way: "P1 & P4 takes the round" now agrees with the number of winners.
-  - Needs human eyes: whether the four read as distinct characters at board-camera distance, and whether the animations have enough life. They're first passes, and each is a few keyframes in the script.
+  - Developer's look (2026-10-20): "Looks good".
+  - CI: the model test reads the `.glb` files, so the CI job now pulls `crates/game/assets/` from LFS (everything else stays skipped).
 - [ ] **Polish pass 1.** Bring the minigames (Firefly Catch excepted while it's on hold) and the board to the **polished** level using the new characters, plus audio (`bevy_kira_audio`, CC0/sfxr-style SFX) and `bevy_hanabi` particles.
   - Done when: every minigame and the board meet the polished definition, and a full game has been playtested by humans.
   - Skipped overnight (2026-10-20): needs the new characters and a human playtest.
@@ -98,7 +99,7 @@ A fun problem found at the playable stage gets fixed straight away; polish won't
   - Decision: content budgets from DESIGN.md §2 are enforced by convention (≤2 shadow-casting lights per scene; lanterns are emissive plus unshadowed point lights) and checked by `--gpu-report`, not by code limits.
 - [x] **GitLab CI.** `cargo test --workspace` and `cargo clippy --workspace --all-targets -D warnings` on every push.
   - Done when: the pipeline is green on `main`.
-  - `.gitlab-ci.yml`: one `check` job on `rust:1.99-bookworm` (bevy_hanabi needs Rust 1.97+) running `cargo test --workspace --locked`, then clippy with `-D warnings`. Cargo registry and `target/` are cached by `Cargo.lock`; LFS smudging is skipped (no assets needed to build).
+  - `.gitlab-ci.yml`: one `check` job on `rust:1.99-bookworm` (bevy_hanabi needs Rust 1.97+) running `cargo test --workspace --locked`, then clippy with `-D warnings`. Cargo registry and `target/` are cached by `Cargo.lock`; LFS smudging is skipped except for `crates/game/assets/`, which tests read (Blender sources stay as pointers).
   - Evidence: pipelines #2–#4 green on main; #4 (`1fee32a`) ran every test and clippy in about 5.5 minutes (checked with `glab`).
   - Decision: one job instead of separate test and clippy jobs, because both would compile Bevy from scratch and the cache only helps the second run.
 
