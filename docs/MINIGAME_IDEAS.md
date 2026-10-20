@@ -69,3 +69,25 @@ Undecided. With four players, classic elimination is over in three short rounds 
 - **Points instead of elimination** (the third friend): always one chair fewer than players, a point for every round you sit, and the chairs get harder to reach over time. They could move or drift apart, the music could stop sooner or with less warning, or obstacles could come in. Nobody sits out, and the match length is set by the number of rounds.
 - Both versions fit the controls: the stick to move, A to sit. Shoving can come from Lantern Push's knockback. In 1v3 or 2v2, a team scores when any member sits.
 - The "music stops" moment is a seeded random time in the simulation; the music itself is presentation.
+
+## From a fourth friend (2026-10-20)
+
+Their list, in their words:
+
+> "Duck hunt!
+>
+> Brawlhalla!
+>
+> Fifa penalty kicks, but obviously not penalty kicks, just hitting the mark somehow
+>
+> All the racing games from the 90 and 00 where you needed to jump and duck at the right time or you would fall behind
+>
+> A game of luck where your skill is irrelevant"
+
+All undecided. How each might fit:
+
+- **Duck hunt (shooting gallery):** targets fly up out of the scenery and each player moves a crosshair (in their colour and shape) with the stick and shoots with A. Without a light gun, how fast the crosshair moves sets the difficulty. It suits the shared screen, since every crosshair aims at the same targets. 1v3 can turn it around: three players steer the targets and dodge while the solo shoots. Bots aim at a target with a reaction delay and some jitter that shrink with difficulty. Firefly Catch is also about chasing moving things, so the targets should look and move differently from fireflies.
+- **Brawlhalla (platform fighter):** a side-on stage with floating platforms, where the goal is to knock rivals off it. It's Lantern Push's ring-out idea with jumping, so it needs the same platforming physics as the obstacle course (gravity, jumps, one-way platforms). Controls fit: stick, A to jump, B to attack, and maybe X to dodge. Knockback grows with the damage taken, as in Smash and Brawlhalla. 2v2 works well, and fighting games are what rollback netcode was made for. Bots are the hard part: a pure-function fighter has to choose between approaching, attacking and recovering back onto the stage, and still be fun to play against at Easy.
+- **Hit the mark (aim and power):** kick or throw a ball at a target, the way a penalty kick is aimed but without the goalie. A sweeping meter sets the aim and a second press sets the power, or the stick aims and holding A charges the shot, with wind or a moving target added later. Everyone could shoot at their own target side by side, or take turns at one target with the closest shot scoring. Bots time their presses with an error that shrinks with difficulty. It's close to the Tivoli horse race (both aim a ball at holes), so the two could become one game.
+- **Jump-and-duck race:** an auto-running race where each player has a lane, low hurdles need A (jump) and high bars need B (duck), and getting it wrong makes you stumble and fall behind. Every lane gets the same seeded course. It's the simple version of the first friend's obstacle course, since it needs only timing and no free movement or platforming physics. Bots press inside a timing window that gets tighter with difficulty. All formats fit, and teams could add up their distances or run it as a relay.
+- **Pure luck:** skill doesn't matter. For example, everyone secretly picks one of several lanterns, chests or doors, the picks are revealed together, and the seeded RNG decides which one held the prize or the dud. Picks stay hidden on a shared screen the same way quiz answers do. Bots pick at random at every difficulty, so a bot is exactly as good as a human. It's useful as a catch-up game, since a player who is far behind on the board has as good a chance as anyone. The fun is in the suspense, so it depends almost entirely on presentation (the slow reveal, near misses). Teams could share one pick or pool several.

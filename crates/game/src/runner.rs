@@ -105,6 +105,8 @@ pub struct ActiveRun<M: Minigame> {
     /// Online: the rollback session that owns the real run; `run` is a copy of its newest
     /// state, for the views.
     rollback: Option<Rollback<M, SocketAddr>>,
+    /// Online on a client: the host decides what comes after the result.
+    follows_host: bool,
 }
 
 impl<M: Minigame> ActiveRun<M> {
@@ -120,6 +122,7 @@ impl<M: Minigame> ActiveRun<M> {
             start_held: [true; MAX_PLAYERS],
             stepped: false,
             rollback: None,
+            follows_host: false,
         }
     }
 
@@ -144,6 +147,7 @@ impl<M: Minigame> ActiveRun<M> {
     pub fn continue_prompt(&self) -> String {
         match (self.can_restart(), self.origin) {
             (false, _) => String::new(),
+            (true, Origin::FreePlay) if self.follows_host => crate::tr!("minigame-waiting-host"),
             (true, Origin::FreePlay) => crate::tr!("minigame-again"),
             (true, Origin::Board) => crate::tr!("minigame-continue"),
         }
@@ -249,11 +253,14 @@ fn start_run<M: Minigame>(
     mut commands: Commands,
     launch: Option<Res<MinigameLaunch>>,
     mut latch: ResMut<PressLatch>,
+    online: Option<Res<Online>>,
 ) {
     // Presses made on the menus or the board belong there, not to the new game.
     latch.0 = [0; MAX_PLAYERS];
     if let Some(launch) = launch.filter(|l| l.id == M::ID) {
-        commands.insert_resource(ActiveRun::<M>::new(launch.setup, launch.origin));
+        let mut active = ActiveRun::<M>::new(launch.setup, launch.origin);
+        active.follows_host = online.as_deref().is_some_and(|online| !online.is_host());
+        commands.insert_resource(active);
     }
 }
 

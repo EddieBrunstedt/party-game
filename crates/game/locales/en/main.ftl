@@ -39,6 +39,7 @@ join-hosting-lan = { $address }:{ $port } (local network)
 join-hosting-tailscale = { $address }:{ $port } (Tailscale)
 join-connected = Connected to { $address }
 join-host-settings = Bots: { $difficulty }   Rounds: { $rounds }   (the host chooses)
+join-host-settings-free-play = Bots: { $difficulty }   (the host chooses)
 join-waiting-host = Waiting for the host to press Start
 join-starting = Starting...
 
@@ -64,6 +65,7 @@ notice-host-failed = Couldn't host on port { $port }: { $error }
 pick-title = Free play
 pick-hint = Up/down: minigame   Left/right: teams   A: play   B: back
 pick-waiting-host = The host is choosing a minigame...
+pick-hint-client = B: leave
 
 ## Results
 results-title = { $winners } { $count ->
@@ -90,6 +92,7 @@ card-ready = READY
 card-press-a = Press A
 card-prompt = Press A when you're ready
 minigame-again = A: play again   B: choose another
+minigame-waiting-host = The host chooses what's next
 minigame-continue = Press A to continue
 place = { $place ->
         [1] 1st

@@ -845,11 +845,18 @@ fn show_lobby(
                 if started.is_some() {
                     tr!("join-starting")
                 } else if !host {
-                    let settings = tr!(
-                        "join-host-settings",
-                        difficulty = difficulty.clone(),
-                        rounds = lobby.state.rounds
-                    );
+                    let settings = if lobby.state.free_play {
+                        tr!(
+                            "join-host-settings-free-play",
+                            difficulty = difficulty.clone()
+                        )
+                    } else {
+                        tr!(
+                            "join-host-settings",
+                            difficulty = difficulty.clone(),
+                            rounds = lobby.state.rounds
+                        )
+                    };
                     format!("{settings}\n{}", tr!("join-waiting-host"))
                 } else {
                     let rounds = match *mode {
@@ -1162,6 +1169,9 @@ struct PickMenu {
 #[derive(Component)]
 struct PickText;
 
+#[derive(Component)]
+struct PickHint;
+
 /// Formats a minigame offers in free play (always four seats; bots fill the gaps).
 fn free_play_formats(kinds: &[FormatKind]) -> Vec<Format> {
     kinds
@@ -1196,7 +1206,7 @@ fn spawn_pick(
     commands.entity(column).with_children(|column| {
         column.spawn(line(tr!("pick-title"), 52.0, CREAM));
         column.spawn((PickText, line("", 26.0, CREAM)));
-        column.spawn(line(tr!("pick-hint"), 18.0, DIM));
+        column.spawn((PickHint, line(tr!("pick-hint"), 18.0, DIM)));
     });
 }
 
@@ -1206,7 +1216,8 @@ fn pick_minigame(
     seats: Res<Seats>,
     online: Option<Res<Online>>,
     mut menu: ResMut<PickMenu>,
-    mut text: Query<&mut Text, With<PickText>>,
+    mut text: Query<&mut Text, (With<PickText>, Without<PickHint>)>,
+    mut hint: Query<&mut Text, With<PickHint>>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
     sfx: Sfx,
@@ -1221,6 +1232,9 @@ fn pick_minigame(
         }
         for mut text in &mut text {
             text.0 = tr!("pick-waiting-host");
+        }
+        for mut hint in &mut hint {
+            hint.0 = tr!("pick-hint-client");
         }
         return;
     }
