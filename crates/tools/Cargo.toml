@@ -7,5 +7,7 @@ publish.workspace = true
 [dependencies]
 sim-core.workspace = true
 sim-check.workspace = true
+sim-board.workspace = true
+minigame-registry.workspace = true
 minigame-quick-draw.workspace = true
 clap.workspace = true
