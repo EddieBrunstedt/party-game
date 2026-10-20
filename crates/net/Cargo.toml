@@ -9,3 +9,8 @@ sim-core.workspace = true
 ggrs.workspace = true
 serde.workspace = true
 bincode.workspace = true
+
+[dev-dependencies]
+minigame-quick-draw.workspace = true
+minigame-lantern-push.workspace = true
+minigame-firefly-catch.workspace = true

@@ -1,10 +1,14 @@
-//! Headless developer tools: run the automated quality bars, bot-only minigame matches and
-//! whole bot-only board games from the CLI.
+//! Headless developer tools: run the automated quality bars (offline and online), bot-only
+//! minigame matches and whole bot-only board games from the CLI.
+
+use std::time::Duration;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use minigame_firefly_catch::FireflyCatch;
 use minigame_lantern_push::LanternPush;
 use minigame_quick_draw::QuickDraw;
+use net::check::{OnlineMatch, OnlineReport};
+use net::{Faults, UdpTransport};
 use sim_board::{Board, Event, Game, Rules, Summary};
 use sim_core::{
     Difficulty, Format, MAX_PLAYERS, Minigame, MinigameEntry, PlayerSetup, RunConfig, Seat,
@@ -24,6 +28,24 @@ enum Command {
         minigame: String,
         #[arg(long, default_value_t = 32)]
         seeds: u64,
+    },
+    /// Play bot-only matches across 2-4 peers over localhost UDP with simulated latency and
+    /// loss, and check every peer agrees on every confirmed tick and on the outcome.
+    NetCheck {
+        /// Minigame id, e.g. quick-draw.
+        minigame: String,
+        #[arg(long, default_value_t = 2)]
+        seeds: u64,
+        /// One-way delay added to every datagram.
+        #[arg(long, default_value_t = 40)]
+        delay_ms: u64,
+        /// Extra random delay per datagram, up to this much (it also reorders them).
+        #[arg(long, default_value_t = 30)]
+        jitter_ms: u64,
+        #[arg(long, default_value_t = 5)]
+        loss_percent: u32,
+        #[arg(long, default_value_t = 2)]
+        duplicate_percent: u32,
     },
     /// Play bot-only matches and print how they went.
     Bots {
@@ -85,6 +107,76 @@ fn checker(id: &str) -> Option<fn(u64) -> Result<(), String>> {
         LanternPush::ID => Some(sim_check::check_all::<LanternPush>),
         FireflyCatch::ID => Some(sim_check::check_all::<FireflyCatch>),
         _ => None,
+    }
+}
+
+/// Plays one online match across this many peers.
+type NetChecker = fn(OnlineMatch, usize) -> Result<OnlineReport, String>;
+
+/// Like [`checker`], for the online check.
+fn net_checker(id: &str) -> Option<NetChecker> {
+    match id {
+        QuickDraw::ID => Some(play_over_udp::<QuickDraw>),
+        LanternPush::ID => Some(play_over_udp::<LanternPush>),
+        FireflyCatch::ID => Some(play_over_udp::<FireflyCatch>),
+        _ => None,
+    }
+}
+
+/// One machine per peer, each on its own localhost UDP port.
+fn play_over_udp<M: Minigame>(setup: OnlineMatch, peers: usize) -> Result<OnlineReport, String> {
+    let transports: Vec<_> = (0..peers)
+        .map(|_| UdpTransport::bind("127.0.0.1:0"))
+        .collect::<Result<_, _>>()
+        .map_err(|e| format!("could not bind a UDP socket: {e}"))?;
+    let addrs: Vec<_> = transports.iter().map(|t| t.local_addr().unwrap()).collect();
+    net::check::play_online::<M, _>(transports, &addrs, setup)
+}
+
+fn net_check(id: &str, seeds: u64, faults: Faults) -> Result<(), String> {
+    let entry = find(id)?;
+    let play = net_checker(entry.id).ok_or_else(|| format!("{id} has no net checker in tools"))?;
+    let mut matches = 0;
+    for seed in 0..seeds {
+        for setup in checker_setups(entry.id, seed) {
+            for peers in 2..=setup.players.count() {
+                let online = OnlineMatch {
+                    seed,
+                    players: setup.players,
+                    format: setup.format,
+                    difficulty: DIFFICULTIES[seed as usize % DIFFICULTIES.len()],
+                    faults,
+                };
+                let report = play(online, peers)?;
+                let rollbacks: u32 = report.rollbacks.iter().sum();
+                println!(
+                    "  seed {seed}, {} players, {}, {peers} peers: {} ticks agreed, {rollbacks} rollbacks (longest {}), won by {}",
+                    setup.players.count(),
+                    describe(setup.format, setup.players),
+                    report.compared,
+                    report.max_resimulated,
+                    seat_list(report.outcome.winners(), ", ")
+                );
+                matches += 1;
+            }
+        }
+    }
+    println!(
+        "{}: {matches} online matches, every peer agreed on every tick",
+        entry.id
+    );
+    Ok(())
+}
+
+const DIFFICULTIES: [Difficulty; 3] = [Difficulty::Easy, Difficulty::Normal, Difficulty::Hard];
+
+/// The seeds, player counts and formats `check_all` covers, for a minigame by id.
+fn checker_setups(id: &str, seed: u64) -> Vec<sim_check::Setup> {
+    match id {
+        QuickDraw::ID => sim_check::setups::<QuickDraw>(seed),
+        LanternPush::ID => sim_check::setups::<LanternPush>(seed),
+        FireflyCatch::ID => sim_check::setups::<FireflyCatch>(seed),
+        _ => Vec::new(),
     }
 }
 
@@ -241,6 +333,23 @@ fn print_rounds(summary: &Summary) {
 fn main() {
     let result = match Cli::parse().command {
         Command::Check { minigame, seeds } => check(&minigame, seeds),
+        Command::NetCheck {
+            minigame,
+            seeds,
+            delay_ms,
+            jitter_ms,
+            loss_percent,
+            duplicate_percent,
+        } => net_check(
+            &minigame,
+            seeds,
+            Faults {
+                loss_percent,
+                duplicate_percent,
+                delay: Duration::from_millis(delay_ms),
+                jitter: Duration::from_millis(jitter_ms),
+            },
+        ),
         Command::Bots {
             minigame,
             runs,
@@ -269,6 +378,16 @@ mod tests {
     fn every_registered_minigame_can_be_checked() {
         for entry in minigame_registry::ALL {
             assert!(checker(entry.id).is_some(), "add {} to `checker`", entry.id);
+            assert!(
+                net_checker(entry.id).is_some(),
+                "add {} to `net_checker`",
+                entry.id
+            );
+            assert!(
+                !checker_setups(entry.id, 0).is_empty(),
+                "add {} to `checker_setups`",
+                entry.id
+            );
         }
     }
 }

@@ -1,16 +1,20 @@
 //! Networking (ADR 0004): a datagram [`Transport`] with UDP and in-memory backends, and an
 //! [`Endpoint`] on top that does the version handshake, a reliable ordered channel for board
 //! messages, and the `ggrs` socket for minigames, all over the same transport.
+//! [`rollback::Rollback`] drives any minigame through `ggrs` on top of it, and [`check`] is the
+//! headless online quality bar.
 //!
 //! This is not simulation code, so it may use the wall clock, but only through [`Clock`], which
 //! tests replace with a manual one so that delays and resends are reproducible.
 
+pub mod check;
 mod clock;
 mod endpoint;
 mod faults;
 mod frame;
 mod memory;
 mod reliable;
+pub mod rollback;
 mod udp;
 
 use std::fmt::Debug;

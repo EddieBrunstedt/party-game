@@ -92,12 +92,13 @@ crates/
   minigames/*   # no Bevy. One crate per minigame: State: Clone + Hash, step(), bot_input()
   registry/     # no Bevy. minigame-registry: the list of every minigame, looked up by id
   net/          # no Bevy. Transport (UDP, in-memory, fault injection), Endpoint (handshake, reliable
-                #   channel, ggrs socket); later the ggrs driver and board-phase protocol
+                #   channel, ggrs socket), rollback driver, online check; later the board protocol
   game/         # Bevy 0.20: rendering, interpolation, UI, audio, input, menus.
                 #   flow.rs (screen states), runner.rs (input + minigame driver), board_view.rs,
                 #   menus.rs, intro.rs (instruction card), one view module per minigame,
                 #   characters.rs, particles.rs, audio.rs + sfx.rs, quality.rs, i18n.rs
-  tools/        # headless CLI: `check` (all quality bars), `bots` (bot-only matches), `board` (bot-only board games)
+  tools/        # headless CLI: `check` (all quality bars), `net-check` (online bar over localhost UDP),
+                #   `bots` (bot-only matches), `board` (bot-only board games)
 ```
 
 ### 4.2 Simulation outside Bevy ([ADR 0001](adr/0001-simulation-outside-bevy.md))
@@ -131,7 +132,7 @@ Determinism rules for simulation code:
 | Phase | Model | Details |
 |---|---|---|
 | Board | Host-authoritative, event-driven | Clients send intents (roll, pick path, buy star). The host applies them and broadcasts results. Dice use a seeded RNG on the host. |
-| Minigame | Deterministic rollback over inputs only ([ADR 0002](adr/0002-rollback-with-ggrs-core.md)) | `ggrs` drives `Minigame::step`. Save = `clone`, load = restore, checksum = hash. 60 Hz, 2 frames input delay, max 8 frames of rollback. The host hands each minigame its seed, players and format. |
+| Minigame | Deterministic rollback over inputs only ([ADR 0002](adr/0002-rollback-with-ggrs-core.md)) | `ggrs` drives `Minigame::step`. Save = `clone`, load = restore, checksum = hash. 60 Hz, 2 frames input delay, max 8 frames of rollback. The host hands each minigame its seed, players and format. Each machine sends the input for its own seats; the host also sends the bots' and the empty seats'. The outcome counts once its tick is confirmed (`net::rollback`). |
 
 - **Pause is an input.** All peers see it on the same frame, and the simulation stops advancing game time while paused.
 - **Physics:** custom and simple (circles, boxes, heightfields, gravity, knockback), in `sim_core::physics`: a `Vec2` floor plane (x right, y towards the camera; the renderer maps it to world `(x, 0, y)`), `Body` circles with velocities in units per second, and pairwise collisions resolved in index order.
@@ -189,7 +190,7 @@ A minigame is **done** when it passes all three:
 2. **Headless bot run:** 4 bots finish the game with no panics.
 3. **Manual feel check:** the developer plays it.
 
-(1) and (2) are one call, `sim_check::check_all::<M>(seeds)`. Every minigame crate runs it as a unit test, and `cargo run -p tools -- check <minigame>` runs it from the CLI. They will also run in CI on GitLab.
+(1) and (2) are one call, `sim_check::check_all::<M>(seeds)`. Online, `cargo run -p tools -- net-check <minigame>` plays bot matches across 2–4 machines over localhost UDP with simulated lag and loss, and every machine must agree on every confirmed tick and on the outcome; `net`'s tests run a smaller version in CI. Every minigame crate runs it as a unit test, and `cargo run -p tools -- check <minigame>` runs it from the CLI. They will also run in CI on GitLab.
 
 ## 6. Milestones
 

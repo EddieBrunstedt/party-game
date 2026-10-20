@@ -8,6 +8,7 @@ publish.workspace = true
 sim-core.workspace = true
 sim-check.workspace = true
 sim-board.workspace = true
+net.workspace = true
 minigame-registry.workspace = true
 minigame-quick-draw.workspace = true
 minigame-lantern-push.workspace = true

@@ -4116,6 +4116,9 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "ggrs",
+ "minigame-firefly-catch",
+ "minigame-lantern-push",
+ "minigame-quick-draw",
  "serde",
  "sim-core",
 ]
@@ -5800,6 +5803,7 @@ dependencies = [
  "minigame-lantern-push",
  "minigame-quick-draw",
  "minigame-registry",
+ "net",
  "sim-board",
  "sim-check",
  "sim-core",
