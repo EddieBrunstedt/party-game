@@ -3,3 +3,4 @@
 *.rpp-bak
 *.rpp-undo
 /screenshots
+.claude/worktrees/
