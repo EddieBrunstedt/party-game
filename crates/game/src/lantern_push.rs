@@ -439,7 +439,7 @@ fn crumble_edge(
     let radius = active.run.game.radius();
     let (generation, mut crumbled_at, mut count) =
         last.unwrap_or((active.generation, START_RADIUS, 0));
-    if generation != active.generation {
+    if generation != active.generation || active.is_added() {
         crumbled_at = START_RADIUS;
     }
     if crumbled_at - radius >= 0.08 {

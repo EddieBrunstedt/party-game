@@ -2,6 +2,7 @@
 //! simulation state. Fireflies are matched to entities by their simulation id, so spawning,
 //! catching and leaving all animate from the state alone.
 
+use std::collections::BTreeSet;
 use std::f32::consts::PI;
 
 use bevy::prelude::*;
@@ -545,22 +546,21 @@ fn catch_effects(
     time: Res<Time>,
     effects: Res<Effects>,
     active: Res<ActiveRun<FireflyCatch>>,
-    mut seen: Local<(u32, u32)>,
+    mut shown: Local<(u32, BTreeSet<u32>)>,
 ) {
     let game = &active.run.game;
-    // Ids only grow, so remembering the highest caught id seen is enough.
-    if seen.0 != active.generation {
-        *seen = (active.generation, 0);
+    // Catches come in any order, so remember exactly which ones have had their effect. A new
+    // run (a fresh resource, or a restart) starts over.
+    if active.is_added() || shown.0 != active.generation {
+        *shown = (active.generation, BTreeSet::new());
     }
-    let mut highest = seen.1;
     for firefly in &game.fireflies {
         let FireflyStatus::Caught { by, .. } = firefly.status else {
             continue;
         };
-        if firefly.id < seen.1 {
+        if !shown.1.insert(firefly.id) {
             continue;
         }
-        highest = highest.max(firefly.id + 1);
         let at = world(firefly.body.pos) + Vec3::Y * HOVER;
         particles::burst(&mut commands, &effects, SCOPE, at, hdr(seat_color(by), 6.0));
         particles::burst(
@@ -586,7 +586,6 @@ fn catch_effects(
             },
         ));
     }
-    seen.1 = highest;
 }
 
 fn update_popups(

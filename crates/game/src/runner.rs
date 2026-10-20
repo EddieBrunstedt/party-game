@@ -81,6 +81,9 @@ pub struct ActiveRun<M: Minigame> {
     /// Bumped on every restart so views can reset their presentation state.
     pub generation: u32,
     finished_ticks: u32,
+    /// Seats whose Start was already down when this run began (e.g. the Start that launched
+    /// it). Their Start is ignored until released, so the game doesn't open paused.
+    start_held: [bool; MAX_PLAYERS],
 }
 
 impl<M: Minigame> ActiveRun<M> {
@@ -93,6 +96,7 @@ impl<M: Minigame> ActiveRun<M> {
             origin,
             generation: 0,
             finished_ticks: 0,
+            start_held: [true; MAX_PLAYERS],
         }
     }
 
@@ -204,7 +208,13 @@ impl<M: Minigame> Plugin for MinigamePlugin<M> {
     }
 }
 
-fn start_run<M: Minigame>(mut commands: Commands, launch: Option<Res<MinigameLaunch>>) {
+fn start_run<M: Minigame>(
+    mut commands: Commands,
+    launch: Option<Res<MinigameLaunch>>,
+    mut latch: ResMut<PressLatch>,
+) {
+    // Presses made on the menus or the board belong there, not to the new game.
+    latch.0 = [0; MAX_PLAYERS];
     if let Some(launch) = launch.filter(|l| l.id == M::ID) {
         commands.insert_resource(ActiveRun::<M>::new(launch.setup, launch.origin));
     }
@@ -365,7 +375,7 @@ fn step_run<M: Minigame>(
         return;
     }
 
-    let inputs: [Input; MAX_PLAYERS] = std::array::from_fn(|i| match seats.0[i] {
+    let mut inputs: [Input; MAX_PLAYERS] = std::array::from_fn(|i| match seats.0[i] {
         None => Input::default(),
         Some(Controller::Bot(difficulty)) => {
             M::bot_input(&active.run.game, Seat(i as u8), difficulty)
@@ -374,6 +384,13 @@ fn step_run<M: Minigame>(
             human_input(keyboard, find_pad(gamepad, &gamepads), &keys, latched[i])
         }
     });
+    for (input, held) in inputs.iter_mut().zip(active.start_held.iter_mut()) {
+        if *held && input.held(Button::START) {
+            input.set(Button::START, false);
+        } else {
+            *held = false;
+        }
+    }
     active.previous = active.run.game.clone();
     active.run.step(inputs);
 }

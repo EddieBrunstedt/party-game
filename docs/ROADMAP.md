@@ -63,8 +63,11 @@ A fun problem found at the playable stage gets fixed straight away; polish won't
   - Done when: every minigame and the board meet the polished definition, and a full game has been playtested by humans.
 - [ ] **Steam Deck quality preset.** A "Deck" preset at 1280×800 with the content budgets from DESIGN.md §2, toggleable in-game.
   - Done when: the preset holds ~2–3 ms GPU frame time on the dev RTX 2080 Ti in the busiest scene.
-- [ ] **GitLab CI.** `cargo test --workspace` and `cargo clippy --workspace --all-targets -D warnings` on every push.
+- [x] **GitLab CI.** `cargo test --workspace` and `cargo clippy --workspace --all-targets -D warnings` on every push.
   - Done when: the pipeline is green on `main`.
+  - `.gitlab-ci.yml`: one `check` job on `rust:1.99-bookworm` (bevy_hanabi needs Rust 1.97+) running `cargo test --workspace --locked`, then clippy with `-D warnings`. Cargo registry and `target/` are cached by `Cargo.lock`; LFS smudging is skipped (no assets needed to build).
+  - Evidence: pipelines #2–#4 green on main; #4 (`1fee32a`) ran every test and clippy in about 5.5 minutes (checked with `glab`).
+  - Decision: one job instead of separate test and clippy jobs, because both would compile Bevy from scratch and the cache only helps the second run.
 
 ## Milestone 2: Online alpha
 

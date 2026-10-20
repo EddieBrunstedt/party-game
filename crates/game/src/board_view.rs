@@ -1016,6 +1016,10 @@ fn update_labels(
     let Some((camera, camera_transform)) = camera.iter().next() else {
         return;
     };
+    // Event serials restart with each board game.
+    if session.is_added() {
+        *seen_coins = 0;
+    }
     let now = time.elapsed_secs();
     let pawn_pos = |seat: Seat| {
         pawns

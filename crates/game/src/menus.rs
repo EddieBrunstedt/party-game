@@ -825,6 +825,10 @@ fn results_screen(
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     let now = time.elapsed_secs();
+    if session.is_none() {
+        *entered = None;
+        return;
+    }
     let since = now - *entered.get_or_insert(now);
     if let Some(session) = &session {
         let standings = session.game.standings();
