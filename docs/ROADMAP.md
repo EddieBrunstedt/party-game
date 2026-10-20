@@ -29,10 +29,18 @@ A fun problem found at the playable stage gets fixed straight away; polish won't
   - Interpolation: `ActiveRun` keeps `previous` (the state one tick back), and views blend by `Time<Fixed>::overstep_fraction()`.
   - Surprise: the first knockback values ended games in ~7 s (one hit from the middle was a ring-out), and the next set timed out most games. Bots also need their "won't dash off the edge" check to account for a dash stopping on contact, or they stall on a small platform.
   - Needs human playtest: dash/brace feel, knockback strength, whether the 8 s before shrinking and ~40 s matches drag with 2 players (2-player games mostly end when the platform is nearly minimum size). `cargo run -p game -- --minigame lantern-push --players 4 --humans 1` (add `--format 1v3` or `--format 2v2`).
-- [ ] **Firefly Catch** (to playable). Chase fleeing fireflies. Introduces:
+- [x] **Firefly Catch** (to playable). Chase fleeing fireflies. Introduces:
   - spawning and despawning objects inside the simulation with stable IDs
   - GPU particles (`bevy_hanabi` from git main until its 0.20 release)
   - Done when: same bar as Lantern Push.
+  - Rules: run with the stick, A swings the net (catches every firefly just ahead), B dashes. Fireflies spawn and despawn in the simulation with never-reused ids, wander, flee, and **sprint, hop over a chaser and tire** (stamina); tired fireflies are the catch window. Golden ones are worth 3. 45 s. FFA, 1v3 (solo ×3), 2v2 (team sums).
+  - Evidence: 23 tests including `check_all` over 16 seeds; `tools check firefly-catch --seeds 32`; 100 bot runs per difficulty at 4 players with wins spread 23–35 per seat; one Hard bot averages 13.5 points against Easy bots' 7.5. Screenshot sheets of FFA and 2v2 checked.
+  - Simulation built by a subagent in a worktree. Decision: stamina and the hop were added because fireflies "a bit slower than a player" were always caught in ~2 s in this small meadow; tuning speed, fear radius or net size didn't fix that.
+  - Decision: the 1v3 solo's catches count ×3 (bots: solo wins 30–47%; ×4 made it 65–77%).
+  - Particles: `bevy_hanabi` git rev `77630ff` (`game/src/particles.rs`): catch bursts in the catcher's colour, firefly trails, drifting motes. Every effect has a fixed capacity (64/48/256).
+  - Surprise: effect assets must exist before the first state's `OnEnter`, which runs before `Startup`, so `Effects` is built in the plugin (`FromWorld`).
+  - Surprise: once the dev machine's screen went idle, every windowed run hung with no frames (even a standalone Bevy demo). `gamescope --backend headless` renders fine; see CLAUDE.md.
+  - Needs human playtest: whether the sprint/hop/tire rhythm reads and feels fair, net reach with a pad, dash/net cooldowns, ×3 solo fairness. `cargo run -p game -- --minigame firefly-catch --humans 1` (also `--format 1v3`, `--format 2v2`).
 - [x] **Board simulation (`sim-board`).** Board graph in RON, turn state machine, the §3.1 ruleset, board bots, the minigame format chosen from space colours. A minigame registry lets the board pick and launch any minigame by format.
   - Done when: `tools` can play a full bot-only board game headlessly, minigames included, end to end, deterministically from a seed.
   - Evidence: `cargo run -p tools -- board --seed 1 --verbose` plays 12 rounds with Quick Draw and Lantern Push in FFA, 1v3 and 2v2; the same seed gives the same checksum, and different seeds differ. 25 `sim-board` tests, plus a `minigame-registry` integration test that plays full games with the real minigames.

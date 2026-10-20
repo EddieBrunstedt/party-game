@@ -18,9 +18,12 @@ Morning briefing for the developer. Updated at every checkpoint; if the session 
 3. **Board rules details** (ROADMAP.md, under Board simulation): passing the Star = stepping onto it; turn-order rolls never tie; 2v2 teams = blue vs red; 12 rounds default.
 4. **The Lantern Push platform is a smooth disc with a glowing edge**, not voxel tiles, so the ring-out line is exact; the tiles are decoration that crumbles away.
 
-- **Firefly Catch simulation** (`f16273a`): built by a subagent and merged. The view is in the WIP commit below and hasn't been screenshot-checked yet.
+- **Firefly Catch** (sim `f16273a`, view in the commit after `23a72b5`): fleeing fireflies with stable ids, hanabi particles, all formats; screenshots checked.
 
 ## Needs human playtest
+
+- **Firefly Catch:** whether sprint/hop/tire reads, net reach, cooldowns, ×3 solo.
+  `cargo run -p game -- --minigame firefly-catch --humans 1` (also `--format 1v3`, `--format 2v2`).
 
 - **Lantern Push:** dash/brace feel, knockback strength, match length with 2 players.
   `cargo run -p game -- --minigame lantern-push --players 4 --humans 1` (also try `--format 1v3`, `--format 2v2`, `--players 2`).
@@ -34,7 +37,6 @@ Morning briefing for the developer. Updated at every checkpoint; if the session 
 
 The usage limit ran out mid-session. The last commit ("WIP: board view, ...") is green: tests and clippy pass. Not yet ticked in ROADMAP.md:
 
-- **Firefly Catch** (to playable): sim done (23 tests, `check_all`, bots even). The view (`game/src/firefly_catch.rs`, hanabi particles in `game/src/particles.rs`) compiles but **visuals are unverified**. Next: `cargo run -p game -- --minigame firefly-catch --humans 0 --seed 1 --screenshot-dir /tmp/ff --screenshot-at 3 --screenshot-at 15`, inspect, then tick.
 - **Board view**: built (`game/src/board_view.rs`). A bot-only 3-round game ran on screen through Lantern Push and back, and the human prompts render. `cargo run -p game` (no flags) now starts a board game; `--rounds 3` shortens it. Not ticked: nobody has played it with a pad. A human-intent test would also help.
 - **Game flow**: groundwork only. `AppState` (`game/src/flow.rs`), minigames launch and return through `MinigameLaunch`/`MinigameResult`, and `i18n.rs` (Fluent, with an empty `locales/en/main.ftl`). Missing: the title, join and results screens (the board already switches to `AppState::Results` at game over, which shows nothing yet), moving strings to Fluent, and character pick. Input crate decision: ADR 0007.
 - **Steam Deck preset**: not started.

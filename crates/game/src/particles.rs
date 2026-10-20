@@ -11,8 +11,9 @@ pub struct ParticlesPlugin;
 
 impl Plugin for ParticlesPlugin {
     fn build(&self, app: &mut App) {
+        // Created at build time, not in `Startup`: the first state's `OnEnter` runs before it.
         app.add_plugins(HanabiPlugin)
-            .add_systems(Startup, create_effects)
+            .init_resource::<Effects>()
             .add_systems(Update, despawn_expired);
     }
 }
@@ -183,7 +184,7 @@ fn motes_asset() -> EffectAsset {
     fade.add_key(0.8, Vec4::ONE);
     fade.add_key(1.0, Vec4::new(1.0, 1.0, 1.0, 0.0));
     let roundness = w.lit(1.0).expr();
-    EffectAsset::new(256, SpawnerSettings::rate(35.0.into()), w.finish())
+    EffectAsset::new(256, SpawnerSettings::rate(18.0.into()), w.finish())
         .with_name("motes")
         .with_alpha_mode(bevy_hanabi::AlphaMode::Add)
         .init(init_pos)
@@ -203,10 +204,13 @@ fn motes_asset() -> EffectAsset {
         .render(RoundModifier { roundness })
 }
 
-fn create_effects(mut commands: Commands, mut assets: ResMut<Assets<EffectAsset>>) {
-    commands.insert_resource(Effects {
-        burst: assets.add(burst_asset()),
-        trail: assets.add(trail_asset()),
-        motes: assets.add(motes_asset()),
-    });
+impl FromWorld for Effects {
+    fn from_world(world: &mut World) -> Self {
+        let mut assets = world.resource_mut::<Assets<EffectAsset>>();
+        Self {
+            burst: assets.add(burst_asset()),
+            trail: assets.add(trail_asset()),
+            motes: assets.add(motes_asset()),
+        }
+    }
 }

@@ -106,7 +106,7 @@ fn spawn_scene(
     commands.insert_resource(ClearColor(NIGHT_SKY));
     commands.insert_resource(GlobalAmbientLight {
         color: MOONLIGHT,
-        brightness: 40.0,
+        brightness: 110.0,
         ..default()
     });
     commands.spawn((
@@ -128,7 +128,7 @@ fn spawn_scene(
     let half = Vec3::new(ARENA_HALF_EXTENTS.x, 0.0, ARENA_HALF_EXTENTS.y);
     // Meadow floor: grass tiles, a little uneven.
     let tile = meshes.add(Cuboid::new(0.98, 0.4, 0.98));
-    let grass: Vec<_> = [(0.05, 0.1, 0.06), (0.04, 0.085, 0.055), (0.065, 0.11, 0.07)]
+    let grass: Vec<_> = [(0.09, 0.17, 0.1), (0.075, 0.15, 0.09), (0.11, 0.19, 0.11)]
         .into_iter()
         .map(|(r, g, b)| {
             materials.add(StandardMaterial {
@@ -158,6 +158,7 @@ fn spawn_scene(
         perceptual_roughness: 0.9,
         ..default()
     });
+    let trim = materials.add(emissive_material(LANTERN_WARM, 3.0));
     for (pos, size) in [
         (
             Vec3::new(0.0, 0.35, -half.z - 0.4),
@@ -181,6 +182,17 @@ fn spawn_scene(
             Mesh3d(meshes.add(Cuboid::from_size(size))),
             MeshMaterial3d(hedge.clone()),
             Transform::from_translation(pos),
+        ));
+        // A string of warm lights along the top marks the edge of play.
+        commands.spawn((
+            SCOPE,
+            Mesh3d(meshes.add(Cuboid::from_size(if size.x > size.z {
+                Vec3::new(size.x, 0.08, 0.12)
+            } else {
+                Vec3::new(0.12, 0.08, size.z)
+            }))),
+            MeshMaterial3d(trim.clone()),
+            Transform::from_translation(pos + Vec3::Y * 0.39),
         ));
     }
     for (pos, color) in [
@@ -590,7 +602,7 @@ fn update_popups(
 
 const CAMERA_TARGET: Vec3 = Vec3::new(0.0, 0.0, 0.9);
 const CAMERA_OFFSET: Vec3 = Vec3::new(0.0, 11.5, 9.0);
-const FRAMED_HALF_WIDTH: f32 = 9.2;
+const FRAMED_HALF_WIDTH: f32 = 10.0;
 
 fn camera_transform(pull_back: f32) -> Transform {
     Transform::from_translation(CAMERA_TARGET + CAMERA_OFFSET * pull_back)
@@ -728,7 +740,28 @@ fn banner_text(active: &ActiveRun<FireflyCatch>) -> (String, String) {
             } else {
                 String::new()
             };
-            (title, format!("0:{secs:02}"))
+            let clock = format!("0:{secs:02}");
+            let subtitle = match game.format {
+                Format::FreeForAll | Format::Duel { .. } => clock,
+                _ => {
+                    let scores = game.team_scores();
+                    let side = |team: u8| {
+                        names(
+                            game.setup
+                                .seats()
+                                .filter(|s| game.format.team(*s) == Some(team)),
+                        )
+                    };
+                    format!(
+                        "{clock}     {} {}  :  {} {}",
+                        side(0),
+                        scores[0],
+                        scores[1],
+                        side(1)
+                    )
+                }
+            };
+            (title, subtitle)
         }
         Phase::Finished => {
             let outcome = run.outcome().expect("finished games have an outcome");
