@@ -5,8 +5,8 @@ use std::marker::PhantomData;
 
 use ggrs::{GgrsRequest, PredictRepeatLast, SessionBuilder};
 use sim_core::{
-    Button, Difficulty, Format, Input, MAX_PLAYERS, Minigame, Outcome, PlayerSetup, Rng, Run,
-    RunConfig, Seat, checksum,
+    Button, Difficulty, Format, FormatKind, Input, MAX_PLAYERS, Minigame, Outcome, PlayerSetup,
+    Rng, Run, RunConfig, Seat, checksum,
 };
 
 /// Where a recorded run's inputs come from.
@@ -34,6 +34,11 @@ impl Setup {
             format: Format::FreeForAll,
             config: RunConfig::default(),
         }
+    }
+
+    pub fn with_format(mut self, format: Format) -> Self {
+        self.format = format;
+        self
     }
 
     pub fn start<M: Minigame>(&self) -> Run<M> {
@@ -187,12 +192,43 @@ pub fn check_bots_finish<M: Minigame>(
     }
 }
 
-/// Every automated bar, over a spread of seeds, player counts and drivers.
+/// A concrete format of this kind for this many players (seats `0..players`), varied by `seed`
+/// so every seat gets to be the solo or switch teams. `None` if the kind needs another count.
+pub fn sample_format(kind: FormatKind, players: usize, seed: u64) -> Option<Format> {
+    match (kind, players) {
+        (FormatKind::FreeForAll, _) => Some(Format::FreeForAll),
+        (FormatKind::OneVsThree, 4) => Some(Format::OneVsThree {
+            solo: Seat((seed % 4) as u8),
+        }),
+        (FormatKind::TwoVsTwo, 4) => Some(Format::TwoVsTwo {
+            team_of: [[0, 0, 1, 1], [0, 1, 0, 1], [0, 1, 1, 0]][(seed % 3) as usize],
+        }),
+        (FormatKind::Duel, 2) => Some(Format::Duel {
+            a: Seat(0),
+            b: Seat(1),
+        }),
+        _ => None,
+    }
+}
+
+/// Every setup `check_all` covers for one seed: each player count with each supported format.
+pub fn setups<M: Minigame>(seed: u64) -> Vec<Setup> {
+    let mut setups = Vec::new();
+    for players in 2..=MAX_PLAYERS {
+        for kind in M::SUPPORTED_FORMATS {
+            if let Some(format) = sample_format(*kind, players, seed) {
+                setups.push(Setup::new(seed, players).with_format(format));
+            }
+        }
+    }
+    setups
+}
+
+/// Every automated bar, over a spread of seeds, player counts, formats and drivers.
 /// Minigame crates call this from a test; `tools check` calls it from the CLI.
 pub fn check_all<M: Minigame>(seeds: u64) -> Result<(), String> {
     for seed in 0..seeds {
-        for players in 2..=MAX_PLAYERS {
-            let setup = Setup::new(seed, players);
+        for setup in setups::<M>(seed) {
             for difficulty in [Difficulty::Easy, Difficulty::Normal, Difficulty::Hard] {
                 let recording = check_bots_finish::<M>(&setup, difficulty)?;
                 check_replay::<M>(&setup, &recording)?;

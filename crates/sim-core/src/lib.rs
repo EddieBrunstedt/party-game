@@ -7,12 +7,16 @@ pub mod hash;
 pub mod input;
 pub mod math;
 pub mod minigame;
+pub mod physics;
+pub mod registry;
 pub mod rng;
 pub mod run;
 
 pub use hash::checksum;
 pub use input::{Button, Input, Inputs};
 pub use minigame::{Difficulty, Format, FormatKind, Minigame, Outcome, PlayerSetup, Seat};
+pub use physics::{Body, Vec2};
+pub use registry::{DynRun, MinigameEntry};
 pub use rng::Rng;
 pub use run::{Run, RunConfig};
 
