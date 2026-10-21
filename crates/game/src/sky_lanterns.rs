@@ -18,7 +18,9 @@ use crate::i18n::{self, bot_tag, halted_banner};
 use crate::palette::{LANTERN_WARM, MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
 use crate::particles::{self, Effects, hdr};
 use crate::runner::{ActiveRun, MinigameSet, Seats};
-use crate::scenery::{emissive_material, night_camera, noise, spawn_fireflies, spawn_lantern_folk};
+use crate::scenery::{
+    emissive_material, flat_marker_mesh, night_camera, noise, spawn_fireflies, spawn_lantern_folk,
+};
 use crate::tr;
 
 pub struct SkyLanternsViewPlugin;
@@ -235,7 +237,7 @@ fn spawn_scene(
                 emissive: seat_color(*seat) * 4.0,
                 ..default()
             });
-            let marker = marker_mesh(&mut meshes, *seat);
+            let marker = flat_marker_mesh(&mut meshes, *seat);
             commands
                 .spawn((
                     SCOPE,
@@ -270,7 +272,7 @@ fn spawn_scene(
             emissive: seat_color(flyer.seat) * 4.0,
             ..default()
         });
-        let marker = marker_mesh(&mut meshes, flyer.seat);
+        let marker = flat_marker_mesh(&mut meshes, flyer.seat);
         let body = meshes.add(Sphere::new(flyer.body.radius).mesh().uv(24, 16));
         commands
             .spawn((
@@ -288,20 +290,6 @@ fn spawn_scene(
                 MeshMaterial3d(marker_material),
                 Transform::from_xyz(0.0, flyer.body.radius + 0.22, 0.0),
             ));
-    }
-}
-
-/// A flat version of the seat's marker (P1 ●, P2 ▲, P3 ■, P4 ◆).
-fn marker_mesh(meshes: &mut Assets<Mesh>, seat: Seat) -> Handle<Mesh> {
-    match seat.0 {
-        0 => meshes.add(Circle::new(0.1)),
-        1 => meshes.add(Triangle2d::new(
-            Vec2::new(0.0, 0.12),
-            Vec2::new(-0.11, -0.08),
-            Vec2::new(0.11, -0.08),
-        )),
-        2 => meshes.add(Rectangle::new(0.18, 0.18)),
-        _ => meshes.add(Rhombus::new(0.22, 0.22)),
     }
 }
 

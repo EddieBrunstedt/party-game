@@ -154,6 +154,20 @@ pub fn spawn_lantern_folk(
     }
 }
 
+/// A flat version of the seat's marker (P1 ●, P2 ▲, P3 ■, P4 ◆).
+pub fn flat_marker_mesh(meshes: &mut Assets<Mesh>, seat: Seat) -> Handle<Mesh> {
+    match seat.0 {
+        0 => meshes.add(Circle::new(0.1)),
+        1 => meshes.add(Triangle2d::new(
+            Vec2::new(0.0, 0.12),
+            Vec2::new(-0.11, -0.08),
+            Vec2::new(0.11, -0.08),
+        )),
+        2 => meshes.add(Rectangle::new(0.18, 0.18)),
+        _ => meshes.add(Rhombus::new(0.22, 0.22)),
+    }
+}
+
 #[derive(Component)]
 pub struct AmbientFirefly {
     origin: Vec3,

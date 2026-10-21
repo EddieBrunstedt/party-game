@@ -4,6 +4,7 @@
 use bevy::prelude::*;
 use minigame_firefly_catch::FireflyCatch;
 use minigame_lantern_echo::LanternEcho;
+use minigame_lantern_lottery::LanternLottery;
 use minigame_lantern_push::LanternPush;
 use minigame_lantern_tower::LanternTower;
 use minigame_quick_draw::QuickDraw;
@@ -11,7 +12,10 @@ use minigame_sky_lanterns::SkyLanterns;
 use sim_core::{Minigame, MinigameEntry};
 
 use crate::runner::MinigamePlugin;
-use crate::{firefly_catch, lantern_echo, lantern_push, lantern_tower, quick_draw, sky_lanterns};
+use crate::{
+    firefly_catch, lantern_echo, lantern_lottery, lantern_push, lantern_tower, quick_draw,
+    sky_lanterns,
+};
 
 /// Ids of the minigames this client can show.
 pub const SHOWN: &[&str] = &[
@@ -21,6 +25,7 @@ pub const SHOWN: &[&str] = &[
     LanternEcho::ID,
     LanternTower::ID,
     SkyLanterns::ID,
+    LanternLottery::ID,
 ];
 
 /// The registry entries this client can show, in registry order: what the board may pick from.
@@ -49,6 +54,8 @@ impl Plugin for MinigamesPlugin {
             lantern_tower::LanternTowerViewPlugin,
             MinigamePlugin::<SkyLanterns>::default(),
             sky_lanterns::SkyLanternsViewPlugin,
+            MinigamePlugin::<LanternLottery>::default(),
+            lantern_lottery::LanternLotteryViewPlugin,
         ));
     }
 }

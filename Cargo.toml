@@ -28,6 +28,7 @@ minigame-firefly-catch = { path = "crates/minigames/firefly-catch" }
 minigame-lantern-echo = { path = "crates/minigames/lantern-echo" }
 minigame-lantern-tower = { path = "crates/minigames/lantern-tower" }
 minigame-sky-lanterns = { path = "crates/minigames/sky-lanterns" }
+minigame-lantern-lottery = { path = "crates/minigames/lantern-lottery" }
 bevy = "0.20"
 # Git main until its Bevy 0.20 release (ADR 0005): "Migrate to Bevy 0.20 and WESL shaders (#576)".
 bevy_hanabi = { git = "https://github.com/djeedai/bevy_hanabi", rev = "77630ff1eed8b104f34e91d23e9440428dc5ab01", default-features = false, features = ["3d"] }

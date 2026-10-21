@@ -135,6 +135,7 @@ minigame-firefly-catch = Firefly Catch
 minigame-lantern-echo = Lantern Echo
 minigame-lantern-tower = Lantern Tower
 minigame-sky-lanterns = Sky Lanterns
+minigame-lantern-lottery = Lantern Lottery
 
 ## Quick Draw
 quick-draw-title = QUICK DRAW
@@ -231,6 +232,39 @@ sky-lanterns-lit-times = lit { $times ->
    *[other] { $times } times
 }
 sky-lanterns-dash-ready = dash ready: B
+
+## Lantern Lottery
+lantern-lottery-title = LANTERN LOTTERY
+lantern-lottery-how = Four lanterns hold fireflies, and a moth hides in one. Point the stick at a lantern and press A to lock in: nobody sees your pick until everyone's is in. A lantern's fireflies are shared among everyone who picked it, and the moth's lantern pays nothing. The last round counts double (the last two when taking turns).
+lantern-lottery-stick = point at a lantern (or the d-pad)
+lantern-lottery-a = lock in your pick
+lantern-lottery-goal = Most fireflies after 5 rounds wins! With two players you take turns: each round one of you hides a moth and the other picks a lantern, for 6 rounds.
+lantern-lottery-goal-teams = Teams take turns: one hides a moth each, the other picks lanterns, for 6 rounds. Your team's fireflies add up, so don't both pick the same lantern!
+lantern-lottery-goal-solo = { $player } hides the moth each round, and the other three pick lanterns. { $player } needs 4 catches in 5 rounds!
+lantern-lottery-round = Round { $round } of { $rounds }
+lantern-lottery-double = Double fireflies!
+lantern-lottery-pick = Pick a lantern!  { $secs }
+lantern-lottery-hiders = { $players } { $count ->
+        [one] hides a moth
+       *[other] hide moths
+    }
+lantern-lottery-team = { $players }  { $fireflies }
+lantern-lottery-fireflies = { $fireflies ->
+        [one] { $fireflies } firefly
+       *[other] { $fireflies } fireflies
+    }
+lantern-lottery-catches = { $catches }/{ $needed } catches
+lantern-lottery-picking = picking...
+lantern-lottery-hiding = hiding a moth
+lantern-lottery-locked = locked in
+lantern-lottery-gain = +{ $fireflies }
+lantern-lottery-gain-each = +{ $fireflies } each
+lantern-lottery-moth = moth
+lantern-lottery-moth-caught = MOTH! caught { $count }
+lantern-lottery-caught = MOTH!
+lantern-lottery-safe = safe
+lantern-lottery-caught-them = caught them!
+lantern-lottery-missed = missed
 
 ## Board
 board-turn-order = Turn order

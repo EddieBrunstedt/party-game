@@ -7,6 +7,7 @@ mod flow;
 mod i18n;
 mod intro;
 mod lantern_echo;
+mod lantern_lottery;
 mod lantern_push;
 mod lantern_tower;
 mod menus;

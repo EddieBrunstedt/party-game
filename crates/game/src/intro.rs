@@ -415,6 +415,24 @@ mod tests {
     }
 
     #[test]
+    fn lantern_lottery_goals_match_the_rules() {
+        use minigame_lantern_lottery::{CATCHES_TO_WIN, ROUNDS, TURNS_ROUNDS};
+        let free = goal("lantern-lottery", &Format::FreeForAll);
+        assert!(free.contains(&format!("{ROUNDS} rounds")), "{free}");
+        assert!(free.contains(&format!("{TURNS_ROUNDS} rounds")), "{free}");
+        let teams = goal(
+            "lantern-lottery",
+            &Format::TwoVsTwo {
+                team_of: [0, 0, 1, 1],
+            },
+        );
+        assert!(teams.contains(&format!("{TURNS_ROUNDS} rounds")), "{teams}");
+        let solo = goal("lantern-lottery", &Format::OneVsThree { solo: Seat(0) });
+        let needs = format!("{CATCHES_TO_WIN} catches in {ROUNDS} rounds");
+        assert!(solo.contains(&needs), "{solo}");
+    }
+
+    #[test]
     fn the_countdown_counts_three_two_one() {
         let end = COUNTDOWN_TICKS as u32;
         assert_eq!(countdown(0), Some(3));

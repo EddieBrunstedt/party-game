@@ -3,6 +3,7 @@
 
 use minigame_firefly_catch::FireflyCatch;
 use minigame_lantern_echo::LanternEcho;
+use minigame_lantern_lottery::LanternLottery;
 use minigame_lantern_push::LanternPush;
 use minigame_lantern_tower::LanternTower;
 use minigame_quick_draw::QuickDraw;
@@ -16,6 +17,7 @@ pub const ALL: &[MinigameEntry] = &[
     MinigameEntry::of::<LanternEcho>(),
     MinigameEntry::of::<LanternTower>(),
     MinigameEntry::of::<SkyLanterns>(),
+    MinigameEntry::of::<LanternLottery>(),
 ];
 
 pub fn find(id: &str) -> Option<&'static MinigameEntry> {

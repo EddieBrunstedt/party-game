@@ -10,6 +10,7 @@ use std::time::Duration;
 use clap::{Parser, Subcommand, ValueEnum};
 use minigame_firefly_catch::FireflyCatch;
 use minigame_lantern_echo::LanternEcho;
+use minigame_lantern_lottery::LanternLottery;
 use minigame_lantern_push::LanternPush;
 use minigame_lantern_tower::LanternTower;
 use minigame_quick_draw::QuickDraw;
@@ -154,6 +155,7 @@ fn checker(id: &str) -> Option<fn(u64) -> Result<(), String>> {
         LanternEcho::ID => Some(sim_check::check_all::<LanternEcho>),
         LanternTower::ID => Some(sim_check::check_all::<LanternTower>),
         SkyLanterns::ID => Some(sim_check::check_all::<SkyLanterns>),
+        LanternLottery::ID => Some(sim_check::check_all::<LanternLottery>),
         _ => None,
     }
 }
@@ -170,6 +172,7 @@ fn net_checker(id: &str) -> Option<NetChecker> {
         LanternEcho::ID => Some(play_over_udp::<LanternEcho>),
         LanternTower::ID => Some(play_over_udp::<LanternTower>),
         SkyLanterns::ID => Some(play_over_udp::<SkyLanterns>),
+        LanternLottery::ID => Some(play_over_udp::<LanternLottery>),
         _ => None,
     }
 }
@@ -231,6 +234,7 @@ fn checker_setups(id: &str, seed: u64) -> Vec<sim_check::Setup> {
         LanternEcho::ID => sim_check::setups::<LanternEcho>(seed),
         LanternTower::ID => sim_check::setups::<LanternTower>(seed),
         SkyLanterns::ID => sim_check::setups::<SkyLanterns>(seed),
+        LanternLottery::ID => sim_check::setups::<LanternLottery>(seed),
         _ => Vec::new(),
     }
 }
