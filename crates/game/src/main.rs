@@ -98,6 +98,10 @@ struct Cli {
     /// Lose this percentage of the datagrams this machine sends.
     #[arg(long, value_name = "PERCENT", default_value_t = 0)]
     net_loss: u32,
+    /// Hosting: how long to wait for a machine that dropped out before offering to go on
+    /// without it.
+    #[arg(long, value_name = "SECS", default_value_t = online::WAIT_OPTIONS_SECS)]
+    wait_options_after: f32,
     /// Write every sound effect to this directory as WAVs, then exit.
     #[arg(long, value_name = "DIR")]
     dump_sfx: Option<PathBuf>,
@@ -210,6 +214,7 @@ fn main() {
             jitter: std::time::Duration::from_millis(cli.net_delay / 4),
             duplicate_percent: 0,
         },
+        wait_options_secs: cli.wait_options_after,
     };
 
     let mut app = App::new();

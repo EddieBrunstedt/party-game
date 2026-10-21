@@ -55,14 +55,18 @@ fn exchange<T: Transport>(
             match event {
                 NetEvent::Connected(addr) => client_addr = Some(addr),
                 NetEvent::Message(_, bytes) => host_got.push(bytes),
-                NetEvent::Refused(..) | NetEvent::Disconnected(_) => panic!("unexpected {event:?}"),
+                NetEvent::Refused(..) | NetEvent::Disconnected(_) | NetEvent::Lost(_) => {
+                    panic!("unexpected {event:?}")
+                }
             }
         }
         for event in client.poll() {
             match event {
                 NetEvent::Connected(_) => {}
                 NetEvent::Message(_, bytes) => client_got.push(bytes),
-                NetEvent::Refused(..) | NetEvent::Disconnected(_) => panic!("unexpected {event:?}"),
+                NetEvent::Refused(..) | NetEvent::Disconnected(_) | NetEvent::Lost(_) => {
+                    panic!("unexpected {event:?}")
+                }
             }
         }
         if let Some(client_addr) = client_addr.filter(|_| !sent) {
@@ -409,4 +413,43 @@ fn a_goodbye_disconnects_the_other_side() {
     }));
     assert!(host.connected_peers().is_empty());
     assert!(client.send(MemoryAddr(1), b"gone").is_err());
+}
+
+#[test]
+fn quiet_peers_stay_connected_and_a_silent_one_is_lost() {
+    let clock = Clock::manual();
+    let [host, client] = memory_pair(ROUGH, 3, &clock);
+    client.connect(MemoryAddr(1));
+    assert!(wait_for(&[&host, &client], &clock, |i, event| {
+        i == 0 && matches!(event, NetEvent::Connected(_))
+    }));
+
+    // Ten seconds with nothing to say: keepalives hold the connection, even over a rough link.
+    for _ in 0..2000 {
+        for endpoint in [&host, &client] {
+            for event in endpoint.poll() {
+                assert!(
+                    matches!(event, NetEvent::Connected(_)),
+                    "unexpected {event:?}"
+                );
+            }
+        }
+        clock.advance(STEP);
+    }
+
+    // The client stops answering (frozen, or its network went): the host gives up on it.
+    let mut waited = Duration::ZERO;
+    while !host.poll().contains(&NetEvent::Lost(MemoryAddr(2))) {
+        clock.advance(STEP);
+        waited += STEP;
+        assert!(waited < Duration::from_secs(6), "never lost");
+    }
+    assert!(waited >= net::PEER_TIMEOUT - Duration::from_millis(500));
+    assert!(host.connected_peers().is_empty());
+
+    // When the client speaks again, the host tells it that it was forgotten.
+    assert!(wait_for(&[&host, &client], &clock, |i, event| {
+        i == 1 && *event == NetEvent::Disconnected(MemoryAddr(1))
+    }));
+    assert!(client.connected_peers().is_empty());
 }

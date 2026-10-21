@@ -187,6 +187,16 @@ impl LobbyState {
         changed
     }
 
+    /// Numbers `peer`'s claims 0, 1, 2... in seat order, for a machine taking that peer's seats
+    /// back: its controllers number themselves afresh as they press A.
+    pub fn renumber_locals(&mut self, peer: PeerId) {
+        let claims = self.seats.iter_mut().flatten();
+        let mine = claims.filter(|claim| claim.peer == peer);
+        for (local, claim) in mine.enumerate() {
+            claim.local = local as u8;
+        }
+    }
+
     /// Characters per seat: players keep theirs, bots take whoever is left, in order.
     pub fn roster(&self) -> [u8; MAX_PLAYERS] {
         let mut free = (0..self.characters)

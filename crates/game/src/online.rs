@@ -11,10 +11,11 @@ use net::rollback::SeatOwner;
 use net::session::{Client, ClientEvent, Host, HostEvent, JoinRefusal, Launch, Start};
 use net::{Clock, Endpoint, EndpointConfig, Faults, Faulty, Transport, UdpTransport};
 use sim_board::{Event, Game, Intent, Rejected};
-use sim_core::{MAX_PLAYERS, Outcome, Seat};
+use sim_core::{Button, MAX_PLAYERS, Outcome, Seat};
 
 use crate::flow::{AppState, MinigameLaunch, Origin};
-use crate::runner::{RunRules, RunSetup};
+use crate::i18n::names;
+use crate::runner::{Controller, RunRules, RunSetup, SeatInputs, Seats};
 use crate::tr;
 
 /// Picked at runtime, so `--net-delay` can wrap UDP in fault injection.
@@ -22,6 +23,9 @@ pub type NetTransport = Box<dyn Transport<Addr = SocketAddr>>;
 
 /// The port a host listens on unless told otherwise, and the one a bare address means.
 pub const DEFAULT_PORT: u16 = 7777;
+/// How long the session waits for a machine that dropped out before the host is offered
+/// other ways on (`--wait-options-after` changes it).
+pub const WAIT_OPTIONS_SECS: f32 = 120.0;
 
 /// Peers must run the same build: the handshake compares this.
 fn game_version() -> String {
@@ -42,10 +46,18 @@ impl Plugin for OnlinePlugin {
         app.add_message::<OnlineEvent>()
             .init_resource::<NetStats>()
             .init_resource::<RemoteReady>()
+            .init_resource::<Waiting>()
+            .add_systems(Startup, spawn_waiting_banner)
             .add_systems(PreUpdate, poll.run_if(resource_exists::<Online>))
             .add_systems(
                 Update,
-                (leave_when_the_host_does, follow_free_play, note_ready),
+                (
+                    leave_when_the_host_does,
+                    follow_launches.after(crate::menus::ReactToOnline),
+                    note_ready,
+                    note_away,
+                    (decide_about_the_absent, show_waiting).chain(),
+                ),
             );
     }
 }
@@ -74,6 +86,18 @@ pub enum OnlineEvent {
     Launch(Launch),
     /// Client, free play: the host went back to choosing.
     BackToPicker,
+    /// Client: the host stopped answering.
+    HostLost,
+    /// After the start: the machines the session is waiting for (gone, or rejoining).
+    Away(Vec<PeerId>),
+    /// Host: a machine that dropped out has its seats again and needs the board.
+    Back(PeerId),
+    /// Every machine has the minigame's confirmed end.
+    MinigameSettled,
+    /// Client: the host abandoned the minigame because a machine dropped out.
+    MinigameStopped,
+    /// Client: everyone is back; play the stopped minigame again.
+    MinigameRestart(Launch),
 }
 
 /// Reads the network once a frame, before any screen looks at it.
@@ -89,36 +113,228 @@ pub struct RemoteReady(pub [bool; MAX_PLAYERS]);
 
 fn note_ready(mut events: MessageReader<OnlineEvent>, mut ready: ResMut<RemoteReady>) {
     for event in events.read() {
-        if let OnlineEvent::Ready(seat) = event {
-            ready.0[seat.index()] = true;
+        match event {
+            OnlineEvent::Ready(seat) => ready.0[seat.index()] = true,
+            // Read before the stop: the restart needs everyone to read the card again.
+            OnlineEvent::MinigameRestart(_) => ready.0 = [false; MAX_PLAYERS],
+            _ => {}
         }
     }
 }
 
-/// Free play online, on a client: play what the host launches, wait while it picks.
-fn follow_free_play(
+/// On a client: play what the host launches in free play, wait while it picks, and play a
+/// stopped minigame again when the host restarts it. (A machine that just came back to a
+/// board game launches the minigame from its board instead.)
+fn follow_launches(
     mut events: MessageReader<OnlineEvent>,
     rules: Res<RunRules>,
+    online: Option<Res<Online>>,
+    state: Res<State<AppState>>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
+    let free_play = online
+        .as_deref()
+        .and_then(Online::lobby)
+        .is_some_and(|lobby| lobby.free_play);
     for event in events.read() {
-        match event {
-            OnlineEvent::Launch(launch) => {
-                commands.insert_resource(MinigameLaunch {
-                    id: launch.id.clone(),
-                    setup: RunSetup {
-                        seed: launch.seed,
-                        players: launch.players,
-                        format: launch.format,
-                        config: rules.0,
-                    },
-                    origin: Origin::FreePlay,
-                });
-                next_state.set(AppState::Minigame);
+        let launch = match event {
+            OnlineEvent::Launch(launch) => launch,
+            OnlineEvent::MinigameRestart(launch)
+                if free_play || *state.get() == AppState::Minigame =>
+            {
+                launch
             }
-            OnlineEvent::BackToPicker => next_state.set(AppState::Pick),
-            _ => {}
+            OnlineEvent::BackToPicker => {
+                next_state.set(AppState::Pick);
+                continue;
+            }
+            _ => continue,
+        };
+        commands.insert_resource(MinigameLaunch {
+            id: launch.id.clone(),
+            setup: RunSetup {
+                seed: launch.seed,
+                players: launch.players,
+                format: launch.format,
+                config: rules.0,
+            },
+            origin: if free_play {
+                Origin::FreePlay
+            } else {
+                Origin::Board
+            },
+        });
+        next_state.set(AppState::Minigame);
+    }
+}
+
+/// The machines the session is waiting for, and since when (for the host's options).
+#[derive(Resource, Default)]
+pub struct Waiting {
+    pub peers: Vec<PeerId>,
+    since: f32,
+}
+
+impl Waiting {
+    /// Whether anyone is away: the board and the picker hold still meanwhile.
+    pub fn any(&self) -> bool {
+        !self.peers.is_empty()
+    }
+}
+
+fn note_away(
+    mut events: MessageReader<OnlineEvent>,
+    mut waiting: ResMut<Waiting>,
+    online: Option<Res<Online>>,
+    mut seats: ResMut<Seats>,
+    time: Res<Time>,
+) {
+    for event in events.read() {
+        if let OnlineEvent::Away(peers) = event {
+            if !waiting.any() {
+                waiting.since = time.elapsed_secs();
+            }
+            waiting.peers = peers.clone();
+            if peers.is_empty() {
+                info!("everyone is back");
+            } else {
+                warn!("waiting for machines {peers:?}");
+            }
+            // Seats handed to bots (the lobby, which comes first, no longer has them).
+            if let Some(lobby) = online.as_deref().and_then(Online::lobby) {
+                for seat in Seat::ALL {
+                    let controller = &mut seats.0[seat.index()];
+                    let remote_player =
+                        matches!(controller, Some(Controller::Remote { bot: false }));
+                    if remote_player && lobby.seats[seat.index()].is_none() {
+                        *controller = Some(Controller::Remote { bot: true });
+                    }
+                }
+            }
+        }
+    }
+    if online.is_none() {
+        waiting.peers.clear();
+    }
+}
+
+/// The seats the session is waiting for.
+fn waiting_seats(waiting: &Waiting, online: &Online) -> Vec<Seat> {
+    let Some(lobby) = online.lobby() else {
+        return Vec::new();
+    };
+    Seat::ALL
+        .into_iter()
+        .filter(|seat| {
+            lobby.seats[seat.index()].is_some_and(|claim| waiting.peers.contains(&claim.peer))
+        })
+        .collect()
+}
+
+#[derive(Component)]
+struct WaitingBanner;
+
+fn spawn_waiting_banner(mut commands: Commands) {
+    commands
+        .spawn((
+            GlobalZIndex(20),
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(140.0),
+                width: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+        ))
+        .with_child((
+            WaitingBanner,
+            Text::new(""),
+            TextFont::from_font_size(30.0),
+            TextColor(Color::srgb(1.0, 0.93, 0.8)),
+            TextLayout::justify(Justify::Center),
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
+            Visibility::Hidden,
+        ));
+}
+
+/// The host's choices once a machine has been away for a while: keep waiting, let bots play
+/// its seats, or end the game.
+#[allow(clippy::too_many_arguments)]
+fn decide_about_the_absent(
+    mut waiting: ResMut<Waiting>,
+    mut online: Option<ResMut<Online>>,
+    settings: Res<NetSettings>,
+    inputs: Res<SeatInputs>,
+    mut seats: ResMut<Seats>,
+    time: Res<Time>,
+    mut commands: Commands,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
+    let now = time.elapsed_secs();
+    let Some(Online::Host(host)) = online.as_deref_mut() else {
+        return;
+    };
+    if !waiting.any() || now - waiting.since < settings.wait_options_secs {
+        return;
+    }
+    let pressed = |button: Button| {
+        Seat::ALL
+            .into_iter()
+            .any(|seat| seats.is_human(seat) && inputs.just_pressed(seat, button))
+    };
+    if pressed(Button::A) {
+        info!("keep waiting");
+        waiting.since = now;
+    } else if pressed(Button::X) {
+        let bots = host.lobby().bots;
+        for peer in waiting.peers.clone() {
+            for seat in Seat::ALL {
+                if host.lobby().seats[seat.index()].is_some_and(|claim| claim.peer == peer) {
+                    seats.0[seat.index()] = Some(Controller::Bot(bots));
+                }
+            }
+            info!("bots take over machine {peer:?}'s seats");
+            host.hand_to_bots(peer);
+        }
+    } else if pressed(Button::B) {
+        info!("the host ended the game");
+        commands.insert_resource(Notice(tr!("notice-ended")));
+        next_state.set(AppState::Title);
+    }
+}
+
+/// "Waiting for P3..." on every screen while a machine is away, and the host's options
+/// after a while.
+fn show_waiting(
+    waiting: Res<Waiting>,
+    online: Option<Res<Online>>,
+    settings: Res<NetSettings>,
+    time: Res<Time>,
+    mut banner: Query<(&mut Text, &mut Visibility), With<WaitingBanner>>,
+) {
+    let text = match online.as_deref() {
+        Some(online) if waiting.any() => {
+            let seats = waiting_seats(&waiting, online);
+            let mut text = tr!("waiting-for", players = names(seats.into_iter()));
+            let long = time.elapsed_secs() - waiting.since >= settings.wait_options_secs;
+            if online.is_host() && long {
+                text = format!("{text}\n{}", tr!("waiting-options"));
+            }
+            Some(text)
+        }
+        _ => None,
+    };
+    for (mut shown, mut visibility) in &mut banner {
+        *visibility = if text.is_some() {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if let Some(text) = &text
+            && shown.0 != *text
+        {
+            shown.0 = text.clone();
         }
     }
 }
@@ -170,10 +386,16 @@ fn leave_when_the_host_does(
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
-    if events.read().any(|event| *event == OnlineEvent::HostLeft) {
+    let notice = events.read().find_map(|event| match event {
+        OnlineEvent::HostLeft => Some(tr!("notice-host-left")),
+        OnlineEvent::HostLost => Some(tr!("notice-host-lost")),
+        _ => None,
+    });
+    if let Some(notice) = notice {
+        warn!("{notice}");
         commands.remove_resource::<Online>();
         commands.remove_resource::<OnlineStart>();
-        commands.insert_resource(Notice(tr!("notice-host-left")));
+        commands.insert_resource(Notice(notice));
         next_state.set(AppState::Title);
     }
 }
@@ -225,6 +447,27 @@ impl Online {
         Some(owners)
     }
 
+    /// Welcomed into a started session in place of a machine that dropped out, not seated yet.
+    pub fn rejoining(&self) -> bool {
+        matches!(self, Self::Client(client) if client.rejoining())
+    }
+
+    /// Rejoining: every seat this machine had is taken again.
+    pub fn back(&self) {
+        if let Self::Client(client) = self {
+            client.back();
+        }
+    }
+
+    /// This machine has the minigame's confirmed end; [`OnlineEvent::MinigameSettled`] follows
+    /// once every machine has.
+    pub fn finish_minigame(&mut self) {
+        match self {
+            Self::Host(host) => host.finish_minigame(),
+            Self::Client(client) => client.finish_minigame(),
+        }
+    }
+
     /// One of this machine's players read the instruction card: tell the others.
     pub fn ready(&self, seat: Seat) {
         match self {
@@ -265,6 +508,9 @@ impl Online {
                 .filter_map(|event| match event {
                     HostEvent::Joined(_) => Some(OnlineEvent::PeerJoined),
                     HostEvent::Left(_) => Some(OnlineEvent::PeerLeft),
+                    HostEvent::Away(peers) => Some(OnlineEvent::Away(peers)),
+                    HostEvent::Back(peer) => Some(OnlineEvent::Back(peer)),
+                    HostEvent::MinigameSettled => Some(OnlineEvent::MinigameSettled),
                     HostEvent::LobbyChanged => None,
                     HostEvent::Intent { seat, intent } => {
                         Some(OnlineEvent::Intent { seat, intent })
@@ -286,6 +532,13 @@ impl Online {
                     ClientEvent::Ready(seat) => Some(OnlineEvent::Ready(seat)),
                     ClientEvent::Launch(launch) => Some(OnlineEvent::Launch(launch)),
                     ClientEvent::BackToPicker => Some(OnlineEvent::BackToPicker),
+                    ClientEvent::HostLost => Some(OnlineEvent::HostLost),
+                    ClientEvent::Away(peers) => Some(OnlineEvent::Away(peers)),
+                    ClientEvent::MinigameSettled => Some(OnlineEvent::MinigameSettled),
+                    ClientEvent::MinigameStopped => Some(OnlineEvent::MinigameStopped),
+                    ClientEvent::MinigameRestart(launch) => {
+                        Some(OnlineEvent::MinigameRestart(launch))
+                    }
                 })
                 .collect(),
         }
@@ -409,6 +662,8 @@ pub struct NetSettings {
     pub port: u16,
     /// What to do to every datagram this machine sends (`--net-delay`, `--net-loss`).
     pub faults: Faults,
+    /// How long a host waits for a machine that dropped out before it's offered other ways on.
+    pub wait_options_secs: f32,
 }
 
 impl Default for NetSettings {
@@ -416,6 +671,7 @@ impl Default for NetSettings {
         Self {
             port: DEFAULT_PORT,
             faults: Faults::default(),
+            wait_options_secs: WAIT_OPTIONS_SECS,
         }
     }
 }

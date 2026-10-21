@@ -45,6 +45,9 @@ join-host-settings = Bots: { $difficulty }   Rounds: { $rounds }   Pause when a 
 join-host-settings-free-play = Bots: { $difficulty }   Pause when a controller disconnects: { $pause }   (the host chooses)
 join-waiting-host = Waiting for the host to press Start
 join-starting = Starting...
+join-rejoin = Press A on each of your controllers to take your seats back
+join-rejoining = Taking your seats back...
+join-press-a-rejoin = Press A to take this seat back
 
 ## Joining an online game
 connect-title = Join a game
@@ -62,6 +65,8 @@ connect-socket-error = Couldn't open a network port: { $error }
 
 ## Notices on the title screen
 notice-host-left = The host closed the game.
+notice-host-lost = Lost the connection to the host.
+notice-ended = You ended the game.
 notice-host-failed = Couldn't host on port { $port }: { $error }
 
 ## Free play
@@ -69,6 +74,8 @@ pick-title = Free play
 pick-hint = Up/down: minigame   Left/right: teams   A: play   B: back
 pick-waiting-host = The host is choosing a minigame...
 pick-hint-client = B: leave
+waiting-for = Waiting for { $players }...
+waiting-options = A: keep waiting   X: bots take over   B: end the game
 
 ## Results
 results-title = { $winners } { $count ->

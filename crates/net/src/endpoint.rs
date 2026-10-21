@@ -10,6 +10,11 @@ use crate::{Clock, PROTOCOL_VERSION, Transport};
 const HELLO_INTERVAL: Duration = Duration::from_millis(250);
 /// Goodbyes aren't acked, so each is sent this many times to survive ordinary loss.
 const BYE_COPIES: usize = 3;
+/// A connected peer we've sent nothing to for this long gets a keepalive, so silence means
+/// the peer is gone rather than that there was nothing to say.
+const KEEPALIVE_INTERVAL: Duration = Duration::from_millis(200);
+/// A connected peer heard nothing from for this long is lost ([`NetEvent::Lost`]).
+pub const PEER_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone)]
 pub struct EndpointConfig {
@@ -28,8 +33,11 @@ pub enum NetEvent<A> {
     Refused(A, Refusal),
     /// A whole reliable message, delivered once and in the order it was sent.
     Message(A, Vec<u8>),
-    /// The peer said goodbye ([`Endpoint::disconnect`]).
+    /// The peer said goodbye ([`Endpoint::disconnect`]), or told us it had already forgotten us.
     Disconnected(A),
+    /// Nothing heard from the peer for [`PEER_TIMEOUT`]: it quit without a word, or the
+    /// network between us broke. It's forgotten, as after a goodbye.
+    Lost(A),
 }
 
 /// [`Endpoint::send`] to a peer that never connected.
@@ -59,6 +67,21 @@ struct Inner<T: Transport> {
 struct Peer {
     state: PeerState,
     channel: Channel,
+    /// When anything last arrived from it, or when we started connecting.
+    heard_at: Duration,
+    /// When we last sent it anything.
+    sent_at: Duration,
+}
+
+impl Peer {
+    fn new(state: PeerState, now: Duration) -> Self {
+        Self {
+            state,
+            channel: Channel::default(),
+            heard_at: now,
+            sent_at: now,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,13 +113,9 @@ impl<T: Transport> Endpoint<T> {
         if inner.peers.contains_key(&addr) {
             return;
         }
-        inner.peers.insert(
-            addr,
-            Peer {
-                state: PeerState::Connecting { hello_at: None },
-                channel: Channel::default(),
-            },
-        );
+        let now = inner.clock.now();
+        let peer = Peer::new(PeerState::Connecting { hello_at: None }, now);
+        inner.peers.insert(addr, peer);
         inner.tick();
     }
 
@@ -131,6 +150,13 @@ impl<T: Transport> Endpoint<T> {
                 inner.transport.send(addr, &bye);
             }
         }
+    }
+
+    /// How long since anything arrived from a connected peer.
+    pub fn silent_for(&self, addr: T::Addr) -> Option<Duration> {
+        let inner = self.lock();
+        let peer = inner.peers.get(&addr)?;
+        (peer.state == PeerState::Connected).then(|| inner.clock.now() - peer.heard_at)
     }
 
     pub fn is_connected(&self, addr: T::Addr) -> bool {
@@ -172,6 +198,10 @@ impl<T: Transport> Endpoint<T> {
 impl<T: Transport> Inner<T> {
     fn send_frame(&mut self, to: T::Addr, frame: &Frame) {
         self.transport.send(to, &frame.encode());
+        let now = self.clock.now();
+        if let Some(peer) = self.peers.get_mut(&to) {
+            peer.sent_at = now;
+        }
     }
 
     fn hello(&self) -> Frame {
@@ -195,6 +225,20 @@ impl<T: Transport> Inner<T> {
 
     fn handle(&mut self, from: T::Addr, frame: Frame) {
         let state = self.peers.get(&from).map(|peer| peer.state);
+        let now = self.clock.now();
+        if let Some(peer) = self.peers.get_mut(&from) {
+            peer.heard_at = now;
+        }
+        // Traffic for a connection we've forgotten (it timed out here, say, but not there):
+        // tell the sender, so it stops waiting on us.
+        let for_a_connection = matches!(
+            frame,
+            Frame::Ggrs(_) | Frame::Data { .. } | Frame::Ack { .. } | Frame::Alive
+        );
+        if state.is_none() && for_a_connection {
+            self.transport.send(from, &Frame::Bye.encode());
+            return;
+        }
         match frame {
             Frame::Hello {
                 magic,
@@ -265,6 +309,7 @@ impl<T: Transport> Inner<T> {
                     self.events.push(NetEvent::Disconnected(from));
                 }
             }
+            Frame::Alive => {}
             Frame::Ack { next, beyond } => {
                 if state == Some(PeerState::Connected) {
                     let now = self.clock.now();
@@ -276,20 +321,37 @@ impl<T: Transport> Inner<T> {
     }
 
     fn mark_connected(&mut self, addr: T::Addr) {
-        let peer = self.peers.entry(addr).or_insert_with(|| Peer {
-            state: PeerState::Connected,
-            channel: Channel::default(),
-        });
+        let now = self.clock.now();
+        let peer = self
+            .peers
+            .entry(addr)
+            .or_insert_with(|| Peer::new(PeerState::Connected, now));
         peer.state = PeerState::Connected;
+        peer.heard_at = now;
         self.events.push(NetEvent::Connected(addr));
     }
 
-    /// Sends due hellos and every reliable fragment that is new or overdue.
+    /// Forgets peers that went silent, then sends due hellos, every reliable fragment that is
+    /// new or overdue, and keepalives to peers we'd otherwise say nothing to.
     fn tick(&mut self) {
         let now = self.clock.now();
+        let silent: Vec<T::Addr> = self
+            .peers
+            .iter()
+            .filter(|(_, peer)| peer.state == PeerState::Connected)
+            .filter(|(_, peer)| now - peer.heard_at >= PEER_TIMEOUT)
+            .map(|(addr, _)| *addr)
+            .collect();
+        for addr in silent {
+            self.peers.remove(&addr);
+            self.events.push(NetEvent::Lost(addr));
+        }
+
         let hello = self.hello().encode();
+        let alive = Frame::Alive.encode();
         let mut outgoing = Vec::new();
         for (&addr, peer) in &mut self.peers {
+            let before = outgoing.len();
             match &mut peer.state {
                 PeerState::Connecting { hello_at } => {
                     if hello_at.is_none_or(|at| now >= at + HELLO_INTERVAL) {
@@ -300,8 +362,14 @@ impl<T: Transport> Inner<T> {
                 PeerState::Connected => {
                     let frames = peer.channel.transmit(now);
                     outgoing.extend(frames.iter().map(|frame| (addr, frame.encode())));
+                    if outgoing.len() == before && now - peer.sent_at >= KEEPALIVE_INTERVAL {
+                        outgoing.push((addr, alive.clone()));
+                    }
                 }
                 PeerState::Refused => {}
+            }
+            if outgoing.len() > before {
+                peer.sent_at = now;
             }
         }
         for (to, datagram) in outgoing {

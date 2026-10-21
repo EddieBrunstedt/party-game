@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::marker::PhantomData;
+use std::time::Duration;
 
 use ggrs::{
     DesyncDetection, GgrsError, GgrsEvent, GgrsRequest, P2PSession, PlayerType, PredictRepeatLast,
@@ -23,6 +24,9 @@ pub const INPUT_DELAY: usize = 2;
 pub const MAX_PREDICTION: usize = 8;
 /// How often (in ticks) peers compare checksums of confirmed ticks.
 const DESYNC_INTERVAL: u32 = 30;
+/// `ggrs` would carry on without a silent peer after its own short timeout. The session
+/// decides instead (it stops the minigame once the endpoint loses the peer), so this is long.
+const GGRS_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Who sends a seat's input, as seen from this machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,6 +110,7 @@ where
             .with_fps(TICK_HZ as usize)?
             .with_input_delay(INPUT_DELAY)
             .with_max_prediction_window(MAX_PREDICTION)
+            .with_disconnect_timeout(GGRS_DISCONNECT_TIMEOUT)
             .with_desync_detection_mode(DesyncDetection::On {
                 interval: DESYNC_INTERVAL,
             });

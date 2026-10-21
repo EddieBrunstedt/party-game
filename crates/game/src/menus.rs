@@ -19,7 +19,7 @@ use crate::audio::{Sfx, Sound};
 use crate::board_view::{BoardSession, format_text, minigame_title};
 use crate::characters::{Character, Pose, Roster};
 use crate::flow::{AppState, MinigameLaunch, Origin};
-use crate::online::{self, NetSettings, Notice, Online, OnlineEvent, OnlineStart};
+use crate::online::{self, NetSettings, Notice, Online, OnlineEvent, OnlineStart, Waiting};
 use crate::palette::{MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
 use crate::runner::{Controller, Pad, RunRules, RunSetup, Seats};
 use crate::scenery::{night_camera, spawn_fireflies, spawn_lantern_folk, spawn_paper_lantern};
@@ -37,14 +37,18 @@ impl Plugin for MenusPlugin {
             .add_systems(OnEnter(AppState::Join), spawn_join)
             .add_systems(
                 Update,
-                (react_to_online, join_lobby, show_lobby)
+                (
+                    react_to_online.in_set(ReactToOnline),
+                    join_lobby,
+                    show_lobby,
+                )
                     .chain()
                     .run_if(in_state(AppState::Join)),
             )
             .add_systems(OnEnter(AppState::Connect), spawn_connect)
             .add_systems(
                 Update,
-                (react_to_online, connect_screen)
+                (react_to_online.in_set(ReactToOnline), connect_screen)
                     .chain()
                     .run_if(in_state(AppState::Connect)),
             )
@@ -54,6 +58,11 @@ impl Plugin for MenusPlugin {
             .add_systems(Update, results_screen.run_if(in_state(AppState::Results)));
     }
 }
+
+/// Where the join and connect screens act on the session's news (welcomed, started), so
+/// systems that follow up on the same news can run after it.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ReactToOnline;
 
 /// What the player chose on the title screen.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -473,6 +482,8 @@ pub struct Lobby {
     state: LobbyState,
     /// This machine's controllers, numbered in the order they first pressed A here.
     devices: Vec<Device>,
+    /// Online, back in a started game: every seat has a controller and the host was told.
+    rejoined: bool,
 }
 
 impl Lobby {
@@ -486,6 +497,7 @@ impl Lobby {
         Self {
             state,
             devices: Vec::new(),
+            rejoined: false,
         }
     }
 
@@ -514,12 +526,13 @@ impl Lobby {
         Seats(Seat::ALL.map(|seat| {
             Some(match self.state.seats[seat.index()] {
                 Some(claim) if claim.peer != me => Controller::Remote { bot: false },
-                Some(claim) => match self.devices[claim.local as usize] {
-                    Device::Keyboard => Controller::Human {
+                // A seat whose controller never pressed A here (it can't happen) gets the keyboard.
+                Some(claim) => match self.devices.get(claim.local as usize).copied() {
+                    None | Some(Device::Keyboard) => Controller::Human {
                         gamepad: Pad::None,
                         keyboard: true,
                     },
-                    Device::Pad(entity) => Controller::Human {
+                    Some(Device::Pad(entity)) => Controller::Human {
                         gamepad: Pad::Bound(entity),
                         keyboard: false,
                     },
@@ -621,6 +634,18 @@ fn join_lobby(
     if started.is_some() {
         return;
     }
+    if online.as_deref().is_some_and(Online::rejoining) {
+        rejoin_seats(
+            &nav,
+            &mut lobby,
+            online.as_deref(),
+            me,
+            &mut commands,
+            &mut next_state,
+            &sfx,
+        );
+        return;
+    }
     let host = me == PeerId::HOST;
     let mut actions = Vec::new();
     let mut begin = false;
@@ -715,6 +740,44 @@ fn join_lobby(
             next_state.set(AppState::Board);
         }
         PlayMode::FreePlay => next_state.set(AppState::Pick),
+    }
+}
+
+/// Back in a started game after this machine dropped out: each controller that presses A takes
+/// the next of this machine's seats, in seat order (the host numbered them afresh). Once every
+/// seat has one, the host sends the game.
+fn rejoin_seats(
+    nav: &DeviceNav,
+    lobby: &mut Lobby,
+    online: Option<&Online>,
+    me: PeerId,
+    commands: &mut Commands,
+    next_state: &mut NextState<AppState>,
+    sfx: &Sfx,
+) {
+    if let Some(state) = online.and_then(Online::lobby) {
+        lobby.state = state.clone();
+    }
+    let mine = lobby.state.seats.iter().flatten().filter(|c| c.peer == me);
+    let seats = mine.count();
+    for (device, press) in nav.0.clone() {
+        let new = lobby.local_of(device).is_none();
+        if press.confirm && new && lobby.devices.len() < seats {
+            lobby.local_id(device);
+            sfx.play(Sound::Join);
+        } else if press.back && lobby.devices.is_empty() {
+            sfx.play(Sound::Back);
+            close_online(commands);
+            next_state.set(AppState::Title);
+            return;
+        }
+    }
+    if !lobby.rejoined && seats > 0 && lobby.devices.len() >= seats {
+        info!("every seat has its controller again; telling the host");
+        lobby.rejoined = true;
+        if let Some(online) = online {
+            online.back();
+        }
     }
 }
 
@@ -849,7 +912,8 @@ fn show_lobby(
                     } else {
                         match lobby.devices.get(claim.local as usize) {
                             Some(Device::Keyboard) => tr!("join-keyboard"),
-                            _ => tr!("join-gamepad"),
+                            Some(Device::Pad(_)) => tr!("join-gamepad"),
+                            None => tr!("join-press-a-rejoin"),
                         }
                     };
                     let character = Character::ALL[claim.character as usize];
@@ -865,6 +929,10 @@ fn show_lobby(
             LobbyText::Settings => {
                 if started.is_some() {
                     tr!("join-starting")
+                } else if lobby.rejoined {
+                    tr!("join-rejoining")
+                } else if online.as_deref().is_some_and(Online::rejoining) {
+                    tr!("join-rejoin")
                 } else if !host {
                     let settings = if lobby.state.free_play {
                         tr!(
@@ -1240,6 +1308,7 @@ fn pick_minigame(
     seats: Res<Seats>,
     rules: Res<RunRules>,
     online: Option<Res<Online>>,
+    waiting: Res<Waiting>,
     mut menu: ResMut<PickMenu>,
     mut text: Query<&mut Text, (With<PickText>, Without<PickHint>)>,
     mut hint: Query<&mut Text, With<PickHint>>,
@@ -1283,7 +1352,8 @@ fn pick_minigame(
         next_state.set(back);
         return;
     }
-    if any.confirm || any.start {
+    // Nothing starts while a machine is away: it couldn't play.
+    if (any.confirm || any.start) && !waiting.any() {
         sfx.play(Sound::Confirm);
         let players = PlayerSetup::first(seats.0.iter().flatten().count().max(2));
         let setup = RunSetup {

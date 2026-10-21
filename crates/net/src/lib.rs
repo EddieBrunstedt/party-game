@@ -25,7 +25,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 pub use clock::Clock;
-pub use endpoint::{Endpoint, EndpointConfig, GgrsSocket, NetEvent, NotConnected};
+pub use endpoint::{Endpoint, EndpointConfig, GgrsSocket, NetEvent, NotConnected, PEER_TIMEOUT};
 pub use faults::{Faults, Faulty};
 pub use frame::Refusal;
 pub use memory::{MemoryAddr, MemoryNetwork, MemoryTransport};
@@ -33,7 +33,7 @@ pub use udp::UdpTransport;
 
 /// Bumped by hand whenever the wire format changes (frames here, or board protocol messages).
 /// Peers with a different protocol or game version refuse each other at the handshake.
-pub const PROTOCOL_VERSION: u32 = 5;
+pub const PROTOCOL_VERSION: u32 = 6;
 
 /// Moves whole datagrams between addresses, with no promises: they may be lost, duplicated,
 /// delayed or reordered. Everything reliable is built on top, in [`Endpoint`].

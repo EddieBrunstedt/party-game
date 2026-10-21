@@ -1,6 +1,8 @@
 //! Drives any [`Minigame`] at the fixed tick rate: gathers each seat's input (devices or bot),
 //! steps the simulation, and when it ends either restarts it (free play) or hands the result
-//! back to the board. Couch play only for now; online play will feed the same `Run` through `ggrs`.
+//! back to the board. Online, the same `Run` goes through `ggrs` (`net::rollback`), and the
+//! session says when every machine has the end, or when a machine dropped out and the
+//! minigame stops until it's back.
 
 use std::marker::PhantomData;
 use std::net::SocketAddr;
@@ -10,13 +12,13 @@ use bevy::prelude::*;
 use net::rollback::{Rollback, RollbackEvent};
 use net::session::Launch;
 use sim_core::{
-    Button, Difficulty, Format, Input, Inputs, MAX_PLAYERS, Minigame, PlayerSetup, Run, RunConfig,
-    Seat,
+    Button, Difficulty, Format, Input, Inputs, MAX_PLAYERS, Minigame, Outcome, PlayerSetup, Run,
+    RunConfig, Seat,
 };
 
 use crate::flow::{AppState, MinigameLaunch, MinigameResult, Origin};
 use crate::intro::InstructionCard;
-use crate::online::{NetStats, Online};
+use crate::online::{NetStats, Online, OnlineEvent, RemoteReady};
 
 /// How long a finished game stays on screen before A continues.
 const RESTART_DELAY_TICKS: u32 = 90;
@@ -107,11 +109,24 @@ pub struct ActiveRun<M: Minigame> {
     /// Whether the last fixed update stepped the run, so `previous` -> `run.game` is a tick
     /// nobody has reacted to yet. See [`ActiveRun::ticked`].
     stepped: bool,
-    /// Online: the rollback session that owns the real run; `run` is a copy of its newest
-    /// state, for the views.
-    rollback: Option<Rollback<M, SocketAddr>>,
+    net: Net<M>,
+    /// Online: the confirmed outcome, kept once the session is gone.
+    outcome: Option<Outcome>,
     /// Online on a client: the host decides what comes after the result.
     follows_host: bool,
+}
+
+/// Where an online minigame's rollback session is.
+enum Net<M: Minigame> {
+    Couch,
+    /// Online, until the instruction card closes.
+    NotStarted,
+    /// The session owns the real run; `run` is a copy of its newest state, for the views.
+    Running(Box<Rollback<M, SocketAddr>>),
+    /// Every machine has the confirmed end, so the session is gone.
+    Settled,
+    /// A machine dropped out before the end: frozen until everyone is back and it restarts.
+    Stopped,
 }
 
 impl<M: Minigame> ActiveRun<M> {
@@ -126,8 +141,19 @@ impl<M: Minigame> ActiveRun<M> {
             finished_ticks: 0,
             start_held: [true; MAX_PLAYERS],
             stepped: false,
-            rollback: None,
+            net: Net::Couch,
+            outcome: None,
             follows_host: false,
+        }
+    }
+
+    /// The launch that plays this run again from the start.
+    fn launch(&self) -> Launch {
+        Launch {
+            id: M::ID.to_string(),
+            seed: self.setup.seed,
+            players: self.setup.players,
+            format: self.setup.format,
         }
     }
 
@@ -144,8 +170,10 @@ impl<M: Minigame> ActiveRun<M> {
         self.generation = generation;
     }
 
+    /// Whether the result has been up long enough to move on, and (online) every machine has
+    /// it, so leaving won't starve one still confirming the end.
     pub fn can_restart(&self) -> bool {
-        self.finished_ticks >= RESTART_DELAY_TICKS
+        self.finished_ticks >= RESTART_DELAY_TICKS && !matches!(self.net, Net::Running(_))
     }
 
     /// What pressing A does once the game is over, or nothing while it's too soon to press.
@@ -249,7 +277,11 @@ impl<M: Minigame> Plugin for MinigamePlugin<M> {
         )
         .add_systems(
             Update,
-            crate::intro::show_countdown::<M>.run_if(resource_exists::<ActiveRun<M>>),
+            (
+                crate::intro::show_countdown::<M>,
+                follow_session::<M>.run_if(resource_exists::<Online>),
+            )
+                .run_if(resource_exists::<ActiveRun<M>>),
         );
     }
 }
@@ -264,13 +296,71 @@ fn start_run<M: Minigame>(
     latch.0 = [0; MAX_PLAYERS];
     if let Some(launch) = launch.filter(|l| l.id == M::ID) {
         let mut active = ActiveRun::<M>::new(launch.setup, launch.origin);
-        active.follows_host = online.as_deref().is_some_and(|online| !online.is_host());
+        if let Some(online) = online.as_deref() {
+            active.net = Net::NotStarted;
+            active.follows_host = !online.is_host();
+        }
         commands.insert_resource(active);
     }
 }
 
 fn stop_run<M: Minigame>(mut commands: Commands, mut net_stats: ResMut<NetStats>) {
     commands.remove_resource::<ActiveRun<M>>();
+    net_stats.clear();
+}
+
+/// Online: ends the rollback session once every machine has the end; stops the minigame when
+/// a machine drops out before it (the host decides, and tells the others); and once everyone
+/// is back, the host plays it again from the start with the same seed.
+#[allow(clippy::too_many_arguments)]
+fn follow_session<M: Minigame>(
+    mut events: MessageReader<OnlineEvent>,
+    mut online: ResMut<Online>,
+    mut active: ResMut<ActiveRun<M>>,
+    mut remote_ready: ResMut<RemoteReady>,
+    mut net_stats: ResMut<NetStats>,
+    mut commands: Commands,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
+    let stopped = matches!(active.net, Net::Stopped);
+    for event in events.read() {
+        match event {
+            OnlineEvent::MinigameSettled => {
+                if let Net::Running(_) = active.net {
+                    info!("every machine has the end of {}", M::ID);
+                    active.net = Net::Settled;
+                }
+            }
+            OnlineEvent::MinigameStopped if !stopped => stop(&mut active, &mut net_stats),
+            OnlineEvent::Away(away) => {
+                let Online::Host(host) = online.as_mut() else {
+                    continue;
+                };
+                if !away.is_empty() && active.outcome.is_none() && !stopped {
+                    host.stop_minigame();
+                    stop(&mut active, &mut net_stats);
+                } else if away.is_empty() && stopped {
+                    info!("everyone is back: {} starts again", M::ID);
+                    host.restart_minigame(active.launch());
+                    remote_ready.0 = [false; MAX_PLAYERS];
+                    commands.insert_resource(MinigameLaunch {
+                        id: M::ID.to_string(),
+                        setup: active.setup,
+                        origin: active.origin,
+                    });
+                    next_state.set(AppState::Minigame);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn stop<M: Minigame>(active: &mut ActiveRun<M>, net_stats: &mut NetStats) {
+    warn!("{} stopped: a machine dropped out", M::ID);
+    active.net = Net::Stopped;
+    active.stepped = false;
+    active.previous = active.run.game.clone();
     net_stats.clear();
 }
 
@@ -394,22 +484,20 @@ fn step_run<M: Minigame>(
     mut latch: ResMut<PressLatch>,
     mut next_state: ResMut<NextState<AppState>>,
     card: Option<Res<InstructionCard>>,
-    online: Option<Res<Online>>,
+    mut online: Option<ResMut<Online>>,
     mut net_stats: ResMut<NetStats>,
 ) {
     let latched = std::mem::take(&mut latch.0);
     active.stepped = false;
-    // Nothing happens until everyone has read the instruction card.
-    if card.is_some() {
+    // Nothing happens until everyone has read the instruction card, nor while stopped.
+    if card.is_some() || matches!(active.net, Net::Stopped) {
         return;
     }
     // Online, the run goes through rollback from here on.
-    if let Some(online) = online.as_deref()
-        && active.rollback.is_none()
-    {
+    if let (Some(online), Net::NotStarted) = (online.as_deref(), &active.net) {
         match online.seat_owners() {
             Some(owners) => match Rollback::start(active.run.clone(), owners, online.endpoint()) {
-                Ok(rollback) => active.rollback = Some(rollback),
+                Ok(rollback) => active.net = Net::Running(Box::new(rollback)),
                 Err(err) => error!("couldn't start the online minigame: {err}"),
             },
             None => error!("couldn't start the online minigame: a machine's address is missing"),
@@ -436,7 +524,7 @@ fn step_run<M: Minigame>(
     };
 
     let first_time = active.finished_ticks == 0;
-    let outcome = if let Some(rollback) = active.rollback.as_mut() {
+    let outcome = if let Net::Running(rollback) = &mut active.net {
         // Keep exchanging inputs even after the end, so slower machines can confirm it too.
         let advance = rollback.update(&mut input_for);
         if !advance.new_tick && rollback.confirmed_outcome().is_none() {
@@ -464,6 +552,9 @@ fn step_run<M: Minigame>(
                     M::ID,
                     outcome.placement
                 );
+                if let Some(online) = online.as_deref_mut() {
+                    online.finish_minigame();
+                }
             }
             outcome
         });
@@ -477,13 +568,17 @@ fn step_run<M: Minigame>(
             }
             None => active.previous = active.run.game.clone(),
         }
+        active.outcome = active.outcome.or(outcome);
         outcome
+    } else if let Net::Settled = active.net {
+        active.outcome
     } else {
         active.run.outcome()
     };
 
+    let online = online.as_deref();
     if let Some(outcome) = outcome {
-        if active.rollback.is_none() {
+        if !matches!(active.net, Net::Running(_)) {
             active.previous = active.run.game.clone();
         }
         active.start_held = start_held;
@@ -496,19 +591,19 @@ fn step_run<M: Minigame>(
         };
         let (pressed_a, pressed_b) = (human_pressed(Button::A), human_pressed(Button::B));
         // Online free play follows the host: only its players choose to replay or pick again.
-        let host = online.as_deref().is_none_or(Online::is_host);
+        let host = online.is_none_or(Online::is_host);
         if active.origin == Origin::FreePlay && active.can_restart() && pressed_b && host {
-            if let Some(Online::Host(session)) = online.as_deref() {
+            if let Some(Online::Host(session)) = online {
                 session.back_to_picker();
             }
             next_state.set(AppState::Pick);
             return;
         }
         let no_humans = Seat::ALL.into_iter().all(|seat| !seats.is_human(seat));
-        let carry_on = (active.can_restart() && pressed_a)
-            || (no_humans && active.finished_ticks >= AUTO_CONTINUE_TICKS);
+        let carry_on = active.can_restart()
+            && (pressed_a || (no_humans && active.finished_ticks >= AUTO_CONTINUE_TICKS));
         if carry_on {
-            match (active.origin, online.as_deref()) {
+            match (active.origin, online) {
                 (Origin::FreePlay, None) => active.restart(),
                 (Origin::FreePlay, Some(Online::Host(session))) => {
                     let mut setup = active.setup;
@@ -536,7 +631,7 @@ fn step_run<M: Minigame>(
         }
         return;
     }
-    if active.rollback.is_some() {
+    if !matches!(active.net, Net::Couch) {
         active.start_held = start_held;
         return;
     }

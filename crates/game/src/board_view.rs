@@ -17,7 +17,8 @@ use crate::audio::{Sfx, Sound};
 use crate::characters::{Pose, Roster};
 use crate::flow::{AppState, MinigameLaunch, MinigameResult, Origin};
 use crate::i18n::{bot_tag, names};
-use crate::online::{Online, OnlineEvent};
+use crate::intro::InstructionCard;
+use crate::online::{Online, OnlineEvent, Waiting};
 use crate::palette::{LANTERN_WARM, MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
 use crate::particles::{self, Effects, hdr};
 use crate::runner::{Controller, RunRules, RunSetup, SeatInputs, Seats};
@@ -35,7 +36,11 @@ impl Plugin for BoardViewPlugin {
             OnEnter(AppState::Board),
             (collect_minigame_result, spawn_scene, spawn_hud).chain(),
         )
-        .add_systems(Update, sync_online_board.run_if(resource_exists::<Online>))
+        .add_systems(
+            Update,
+            (sync_online_board, leave_a_minigame_the_host_finished)
+                .run_if(resource_exists::<Online>),
+        )
         .add_systems(
             Update,
             (
@@ -102,6 +107,8 @@ pub struct BoardSession {
     sent: bool,
     /// The seed of the last minigame launched from here, so it isn't launched twice.
     launched: Option<u64>,
+    /// Online host: clients' decisions that arrived while the board waited for a machine.
+    held: VecDeque<(Seat, Intent)>,
 }
 
 impl BoardSession {
@@ -132,6 +139,7 @@ impl BoardSession {
             path_choice: 0,
             sent: false,
             launched: None,
+            held: VecDeque::new(),
         }
     }
 
@@ -304,10 +312,12 @@ fn decide(
     inputs: Res<SeatInputs>,
     mut session: ResMut<BoardSession>,
     online: Option<Res<Online>>,
+    waiting: Res<Waiting>,
     rules: Res<RunRules>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
-    if !session.idle() || session.sent {
+    // Online, the board holds still while a machine is away.
+    if !session.idle() || session.sent || waiting.any() {
         return;
     }
     let now = time.elapsed_secs();
@@ -370,10 +380,12 @@ fn decide(
 /// Online: a client follows the host's board (the snapshot that starts it, then every
 /// decision and outcome), and the host applies clients' decisions and resends the game to a
 /// client whose copy went wrong.
+#[allow(clippy::too_many_arguments)]
 fn sync_online_board(
     mut events: MessageReader<OnlineEvent>,
     online: Res<Online>,
     mut session: Option<ResMut<BoardSession>>,
+    waiting: Res<Waiting>,
     state: Res<State<AppState>>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
@@ -403,14 +415,9 @@ fn sync_online_board(
                     }
                 }
             }
-            (OnlineEvent::Intent { seat, intent }, Online::Host(host)) => {
-                let Some(session) = session.as_deref_mut() else {
-                    continue;
-                };
-                match host.apply(&mut session.game, *seat, *intent) {
-                    Ok(events) => session.push(events),
-                    // Sent twice before the first came back, say: nothing to do.
-                    Err(rejected) => debug!("refused {intent:?} from {seat:?}: {rejected}"),
+            (OnlineEvent::Intent { seat, intent }, Online::Host(_)) => {
+                if let Some(session) = session.as_deref_mut() {
+                    session.held.push_back((*seat, *intent));
                 }
             }
             (OnlineEvent::NeedSnapshot(peer), Online::Host(host)) => {
@@ -419,7 +426,25 @@ fn sync_online_board(
                     host.send_snapshot(*peer, &session.game);
                 }
             }
+            (OnlineEvent::Back(peer), Online::Host(host)) => {
+                if let Some(session) = &session {
+                    info!("{peer:?} is back; sending it the whole game");
+                    host.send_snapshot(*peer, &session.game);
+                }
+            }
             _ => {}
+        }
+    }
+    // The host applies clients' decisions as they come, unless the board waits for someone.
+    if let (Online::Host(host), Some(session)) = (online.as_ref(), session.as_deref_mut())
+        && !waiting.any()
+    {
+        while let Some((seat, intent)) = session.held.pop_front() {
+            match host.apply(&mut session.game, seat, intent) {
+                Ok(events) => session.push(events),
+                // Sent twice before the first came back, say: nothing to do.
+                Err(rejected) => debug!("refused {intent:?} from {seat:?}: {rejected}"),
+            }
         }
     }
     if let Some(fresh) = fresh {
@@ -428,6 +453,32 @@ fn sync_online_board(
         if *state.get() != AppState::Board {
             next_state.set(AppState::Board);
         }
+    }
+}
+
+/// Online on a client that came back mid-minigame: it launches the board's minigame by itself,
+/// but if the others had already finished it and the host moved on, nobody else is coming to
+/// its instruction card. Back to the board, then.
+fn leave_a_minigame_the_host_finished(
+    online: Res<Online>,
+    session: Option<Res<BoardSession>>,
+    launch: Option<Res<MinigameLaunch>>,
+    card: Option<Res<InstructionCard>>,
+    state: Res<State<AppState>>,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
+    let (Online::Client(_), Some(session), Some(launch), Some(_)) =
+        (online.as_ref(), session, launch, card)
+    else {
+        return;
+    };
+    let still_on = matches!(
+        session.game.awaiting(),
+        Awaiting::Minigame(plan) if plan.seed == launch.setup.seed
+    );
+    if *state.get() == AppState::Minigame && launch.origin == Origin::Board && !still_on {
+        info!("the host already finished this minigame; back to the board");
+        next_state.set(AppState::Board);
     }
 }
 
