@@ -51,7 +51,7 @@ pub const CAMERA_FOLLOW: f32 = 0.1;
 pub const CAR_RADIUS: f32 = 0.34;
 pub const MAX_SPEED: f32 = 10.0;
 /// 1v3: the getaway car's top speed.
-pub const GETAWAY_SPEED: f32 = 10.25;
+pub const GETAWAY_SPEED: f32 = 10.1;
 pub const REVERSE_SPEED: f32 = 3.0;
 pub const ACCEL: f32 = 12.0;
 pub const BRAKE: f32 = 16.0;
@@ -63,6 +63,8 @@ pub const GRIP: f32 = 18.0;
 /// Turning speed in radians a second, standing still and at speed.
 pub const TURN_STANDING: f32 = 2.8;
 pub const TURN_MOVING: f32 = 4.6;
+/// Going backwards faster than this, steering turns the car the other way, as a car's does.
+pub const REVERSING: f32 = 0.5;
 /// On the tablecloth a car is slower: speed above this bleeds away at `OFF_ROAD_DRAG` units a
 /// second per second.
 pub const OFF_ROAD_SPEED: f32 = 3.6;
@@ -373,12 +375,14 @@ impl State {
             let mut along = car.body.vel.dot(forward);
             let mut across = car.body.vel.dot(side);
 
-            let stick = Vec2::from_stick(input);
-            if stick != Vec2::ZERO {
+            // Left and right are the car's own, as in Micro Machines: driving down the screen,
+            // stick left turns the car towards the screen's right. Reversing steers like a car.
+            let steer = Vec2::from_stick(input).x;
+            if steer != 0.0 {
                 let k = (along.abs() / 4.0).min(1.0);
                 let rate = (TURN_STANDING + (TURN_MOVING - TURN_STANDING) * k) * DT;
-                let turn = wrap_angle(stick.angle() - car.heading).clamp(-rate, rate);
-                car.heading = wrap_angle(car.heading + turn);
+                let way = if along < -REVERSING { -1.0 } else { 1.0 };
+                car.heading = wrap_angle(car.heading + steer * way * rate);
             }
             let top = if on_road {
                 car.top_speed()
@@ -792,7 +796,7 @@ mod bot {
                 lapse: 10,
                 slip: 20,
                 spread: 0.5,
-                getaway_care: 35,
+                getaway_care: 15,
                 chase: 4.0,
             },
             Difficulty::Normal => Skill {
@@ -803,7 +807,7 @@ mod bot {
                 lapse: 5,
                 slip: 12,
                 spread: 0.45,
-                getaway_care: 80,
+                getaway_care: 60,
                 chase: 5.0,
             },
             Difficulty::Hard => Skill {
@@ -828,6 +832,8 @@ mod bot {
     const PLAN_AHEAD: f32 = 14.0;
     /// How much faster than safe a slipping bot takes the next corner.
     const SLIP: f32 = 0.8;
+    /// How far off its aim a bot steers at full lock, in radians.
+    const FULL_LOCK: f32 = 0.35;
     /// The furthest a bot moves its aim sideways for one obstacle.
     const MAX_SWERVE: f32 = 2.5;
     /// The getaway car swerves from a chaser within this.
@@ -921,9 +927,12 @@ mod bot {
         shifted
     }
 
-    fn stick_towards(direction: Vec2) -> (i8, i8) {
-        let d = direction.normalize_or_zero();
-        (Input::quantize_axis(d.x), Input::quantize_axis(-d.y))
+    /// The stick that turns `car` to face `direction`: full lock beyond [`FULL_LOCK`] off it,
+    /// less as it comes round, so it doesn't overshoot.
+    fn steer_towards(car: &Car, direction: Vec2) -> i8 {
+        let off = wrap_angle(direction.angle() - car.heading);
+        let way = if car.speed() < -REVERSING { -1.0 } else { 1.0 };
+        Input::quantize_axis(off / FULL_LOCK * way)
     }
 
     fn rotate(v: Vec2, angle: f32) -> Vec2 {
@@ -1004,11 +1013,10 @@ mod bot {
             brake = true;
             direction = rotate(direction, 0.6);
         }
-        let (stick_x, stick_y) = stick_towards(direction);
         let mut input = Input {
             buttons: 0,
-            stick_x,
-            stick_y,
+            stick_x: steer_towards(car, direction),
+            stick_y: 0,
         };
         input.set(Button::A, gas);
         input.set(Button::B, brake);
@@ -1045,14 +1053,20 @@ mod tests {
         run_until(run, |g| matches!(g.phase, Phase::Racing { .. }));
     }
 
-    fn drive(stick: Vec2) -> Input {
+    /// A held, steering `steer` (-1 full left to 1 full right).
+    fn drive(steer: f32) -> Input {
         let mut input = Input {
             buttons: 0,
-            stick_x: Input::quantize_axis(stick.x),
-            stick_y: Input::quantize_axis(-stick.y),
+            stick_x: Input::quantize_axis(steer),
+            stick_y: 0,
         };
         input.set(Button::A, true);
         input
+    }
+
+    /// Steering that turns `car` towards `aim`.
+    fn towards(car: &Car, aim: Vec2) -> f32 {
+        (wrap_angle(aim.angle() - car.heading) / 0.35).clamp(-1.0, 1.0)
     }
 
     #[test]
@@ -1087,7 +1101,7 @@ mod tests {
         let mut run = new_run(2, Format::FreeForAll);
         let start = run.game.cars[0].body.pos;
         let mut inputs = NONE;
-        inputs[0] = drive(Vec2::new(1.0, 0.0));
+        inputs[0] = drive(1.0);
         for _ in 0..INTRO_TICKS - 1 {
             run.step(inputs);
         }
@@ -1102,26 +1116,41 @@ mod tests {
         let start = game.cars[0];
         let ahead = start.forward();
         let mut inputs = Inputs::default();
-        inputs.current[0] = drive(ahead);
+        inputs.current[0] = drive(0.0);
         for _ in 0..30 {
             game.drive(&inputs);
         }
         let moved = game.cars[0].body.pos - start.body.pos;
         assert!(moved.dot(ahead) > 1.0, "{moved:?}");
         assert!(game.cars[0].speed() > 4.0);
-        // Point the stick a quarter turn round: the car swings round to face it.
-        let left = ahead.perp();
-        inputs.current[0] = drive(left);
-        for _ in 0..30 {
+        // The stick is the car's own left and right: driving down the screen (+y), stick left
+        // turns it towards the screen's right (+x).
+        let down = std::f32::consts::FRAC_PI_2;
+        game.cars[0].heading = down;
+        game.cars[0].body.vel = Vec2::new(0.0, 6.0);
+        inputs.current[0] = drive(-1.0);
+        for _ in 0..10 {
             game.drive(&inputs);
         }
-        assert!(game.cars[0].forward().dot(left) > 0.95);
+        let facing = game.cars[0].forward();
+        assert!(facing.x > 0.3 && facing.y > 0.0, "{facing:?}");
+        // Up and down on the stick don't steer.
+        let heading = game.cars[0].heading;
+        inputs.current[0].stick_x = 0;
+        inputs.current[0].stick_y = 127;
+        game.drive(&inputs);
+        assert_eq!(game.cars[0].heading, heading);
         // B brakes to a stop, then reverses.
         inputs.current[0] = Input::default().with(Button::B);
         for _ in 0..90 {
             game.drive(&inputs);
         }
         assert!(game.cars[0].speed() < -1.0);
+        // Reversing, the same stick turns the car the other way, as a car's would.
+        let heading = game.cars[0].heading;
+        inputs.current[0].stick_x = -127;
+        game.drive(&inputs);
+        assert!(game.cars[0].heading > heading);
     }
 
     #[test]
@@ -1132,7 +1161,7 @@ mod tests {
         game.cars[0].body.vel = game.cars[0].forward() * MAX_SPEED;
         game.cars[0].on_road = false;
         let mut inputs = Inputs::default();
-        inputs.current[0] = drive(game.cars[0].forward());
+        inputs.current[0] = drive(0.0);
         for _ in 0..60 {
             game.drive(&inputs);
         }
@@ -1154,7 +1183,7 @@ mod tests {
             let car = run.game.cars[0];
             let aim = track.point_at(car.progress + 3.0) - car.body.pos;
             let mut inputs = NONE;
-            inputs[0] = drive(aim);
+            inputs[0] = drive(towards(&car, aim));
             run.step(inputs);
             if !matches!(run.game.phase, Phase::Racing { .. }) {
                 break;

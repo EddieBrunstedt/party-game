@@ -28,7 +28,7 @@ Lessons from this session:
 
 ## Done this session
 
-- **Tabletop Rally** (this commit): see its item in `docs/ROADMAP.md`. The developer chose off-screen knockout, handmade tabletop tracks, the stick pointing the way, and the 1v3 getaway car. This session's calls: closing in after 6 s, fixed-deceleration grip, restarting on a straight, a getaway car 2.5% faster and centred by the camera, and per-difficulty getaway-bot care.
+- **Tabletop Rally** (this commit): see its item in `docs/ROADMAP.md`. The developer chose off-screen knockout, handmade tabletop tracks and the 1v3 getaway car; the stick first pointed the way, and after trying it the developer asked for Micro Machines' car-relative steering (left and right swap when driving down the screen). This session's calls: closing in after 6 s, fixed-deceleration grip, restarting on a straight, a getaway car 1% faster and centred by the camera, and per-difficulty getaway-bot care.
 
 Tuning knobs, if a playtest asks for changes:
 - Tabletop Rally: handling in `MAX_SPEED`, `ACCEL`, `BRAKE`, `GRIP`, `TURN_STANDING`/`TURN_MOVING`, `OFF_ROAD_SPEED`; round length in `VIEW_HALF`, `CLOSE_IN_AFTER`, `CLOSE_IN_TICKS`, `LOOKAHEAD`; 1v3 in `GETAWAY_SPEED`, `HEAD_START`, `CATCH_REACH` and the bots' `getaway_care`/`chase`. Bots in `bot::skill` (corner, wobble, slip, lapse). Tracks in `track.rs` (control points, props by `Across`); the view's framing in `FRAME_MARGIN_X`/`_Y` and `PITCH`.
@@ -39,7 +39,7 @@ Tuning knobs, if a playtest asks for changes:
 
 None of these block new minigames. Don't build any of the offered changes unless the developer asks.
 
-- Tabletop Rally: see "Needs human playtest" under its item (steering feel, the slide in fast bends, whether the closing-in rectangle reads, match length with four, the inside-lane start, the getaway car's edge). It has no engine sound yet.
+- Tabletop Rally: see "Needs human playtest" under its item (how the car-relative steering feels, the slide in fast bends, whether the closing-in rectangle reads, match length with four, the inside-lane start, the getaway car's edge). It has no engine sound yet.
 - Lantern Derby: see "Needs human playtest" under its item (the meter's speed and readability, the aim's speed, whether the luck feels fair, whether the barker is fun).
 - Hedge Maze: see "Needs human playtest" under its item. Open question: equal bots often tie because the maze is symmetric. A tie-break (e.g. total finishing time) would cut that, but ties share the win in every other minigame.
 - Musical Stools: see "Needs human playtest" under its item. One rule needs the developer's OK: in 1v3 the cat's **dash catches** a runner (out for the round). With the agreed version (the cat only shoves), the cat won 0–1%; with catching it wins 48–53%. The other levers that were tried are in the item's decisions.

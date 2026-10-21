@@ -350,13 +350,13 @@ lantern-derby-lid-shut = lid shut
 lantern-derby-lid-cooling = lid resetting
 
 tabletop-rally-title = TABLETOP RALLY
-tabletop-rally-how = Toy cars race round a giant table at night. The camera follows whoever is in front: drop off the edge of the screen, or off the table, and you're out of the round. The tablecloth is slow and the props are solid. If a round drags on, the screen closes in.
-tabletop-rally-stick = point where you want to drive
+tabletop-rally-how = Toy cars race round a giant table at night. Steer like the driver: left and right are your car's own, so driving down the screen they swap. The camera follows whoever is in front: drop off the edge of the screen, or off the table, and you're out of the round. The tablecloth is slow and the props are solid. If a round drags on, the screen closes in.
+tabletop-rally-stick = steer left and right, from the car's point of view
 tabletop-rally-a = drive
 tabletop-rally-b = brake, then reverse
 tabletop-rally-goal = Be the last car on screen to take the round. First to 3 rounds wins!
 tabletop-rally-goal-teams = Your team takes the round once only your cars are left on screen. First to 3 rounds wins!
-tabletop-rally-goal-solo = { $player } is the getaway car: a little faster, with a head start, and the camera follows it. It must leave all three chasers off screen to take the round. The three take it by touching the getaway car. First to 3 rounds wins!
+tabletop-rally-goal-solo = { $player } is the getaway car: a touch faster, with a head start, and the camera follows it. It must leave all three chasers off screen to take the round. The three take it by touching the getaway car. First to 3 rounds wins!
 tabletop-rally-round = Round { $round }
 tabletop-rally-ready = Ready...
 tabletop-rally-go = Go!
