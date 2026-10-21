@@ -3017,6 +3017,7 @@ dependencies = [
  "minigame-lantern-tower",
  "minigame-quick-draw",
  "minigame-registry",
+ "minigame-sky-lanterns",
  "net",
  "sim-board",
  "sim-core",
@@ -4016,7 +4017,16 @@ dependencies = [
  "minigame-lantern-push",
  "minigame-lantern-tower",
  "minigame-quick-draw",
+ "minigame-sky-lanterns",
  "sim-board",
+ "sim-core",
+]
+
+[[package]]
+name = "minigame-sky-lanterns"
+version = "0.1.0"
+dependencies = [
+ "sim-check",
  "sim-core",
 ]
 
@@ -5830,6 +5840,7 @@ dependencies = [
  "minigame-lantern-tower",
  "minigame-quick-draw",
  "minigame-registry",
+ "minigame-sky-lanterns",
  "net",
  "sim-board",
  "sim-check",

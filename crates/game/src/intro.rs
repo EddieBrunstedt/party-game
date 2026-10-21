@@ -395,6 +395,26 @@ mod tests {
     }
 
     #[test]
+    fn sky_lanterns_goals_match_the_rules() {
+        use minigame_sky_lanterns::{GOLDEN_POINTS, HITS_TO_WIN, PLAY_TICKS};
+        let secs = format!("{} seconds", PLAY_TICKS / TICK_HZ);
+        for format in [
+            Format::FreeForAll,
+            Format::OneVsThree { solo: Seat(0) },
+            Format::TwoVsTwo {
+                team_of: [0, 0, 1, 1],
+            },
+        ] {
+            let goal = goal("sky-lanterns", &format);
+            assert!(goal.contains(&secs), "{goal}");
+        }
+        let solo = goal("sky-lanterns", &Format::OneVsThree { solo: Seat(0) });
+        assert!(solo.contains(&format!("{HITS_TO_WIN} times")), "{solo}");
+        let how = tr!("sky-lanterns-how");
+        assert!(how.contains(&format!("worth {GOLDEN_POINTS}")), "{how}");
+    }
+
+    #[test]
     fn the_countdown_counts_three_two_one() {
         let end = COUNTDOWN_TICKS as u32;
         assert_eq!(countdown(0), Some(3));

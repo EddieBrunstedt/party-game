@@ -4,6 +4,7 @@ Briefing for the next session. Earlier sessions' notes are in git history (`git 
 
 ## Done this session
 
+- Sky Lanterns (shooting gallery, all four formats; in 1v3 the three fly lanterns and hide while the solo shoots, the developer's choice) built to playable and ticked; rules, decisions, the bots report and the playtest command are under its item in `docs/ROADMAP.md`.
 - Lantern Tower (stacking race with sabotage, all four formats) built to playable and ticked; rules, decisions, the bots report and the playtest command are under its item in `docs/ROADMAP.md`. The developer chose the sabotage (a gust that speeds up rivals' blocks) and that a miss knocks the top floor off. The developer's playtest found the outer towers harder to judge; the camera is now orthographic, and it's committed.
 - Earlier the same day: Lantern Echo, network reconnects (item 7) and save and resume (item 8); see `git log`.
 
@@ -31,7 +32,11 @@ Briefing for the next session. Earlier sessions' notes are in git history (`git 
 - A resumed game's seats keep their characters; players pick which seat with left/right.
 - Rejoining after a disconnect is by position, not identity (item 7).
 
-## Lantern Tower's camera (fixed, waiting on a playtest)
+## Waiting on the developer's playtests
+
+- Sky Lanterns: see "Needs human playtest" under its item. The open question is whether a shooting gallery, where the better shooter wins almost every time, needs a catch-up twist.
+
+### Lantern Tower's camera (fixed)
 
 Playtest 1 found the middle towers easier to line up (the perspective camera saw the outer ones from the side). The view now uses an orthographic camera; see the Lantern Tower item in `docs/ROADMAP.md`. Lantern Tower is committed. If the developer's next playtest still finds a seat harder, the drop guides (thin light lines up from the top floor's edges) are the next thing to try.
 
@@ -41,6 +46,7 @@ The developer wants to build minigames for a while, and leaves the choice of whi
 
 - Milestone 2 is done apart from the online playtest, which is **deferred** (not a checkbox, so "continue" skips it). Don't start it unless the developer asks.
 - Firefly Catch is on hold: don't tune it.
-- Tuning a minigame for close matches: race every player to the finish (ignore the outcome) in a throwaway test and compare the runner-up's finishing time with the winner's; it's finer than counting steps or floors. Check per-seat wins too: Lantern Tower's bots once had a seat bias from all gusting the same tower on the same tick.
+- Tuning a minigame for close matches: race every player to the finish (ignore the outcome) in a throwaway test and compare the runner-up's finishing time with the winner's; it's finer than counting steps or floors. Check per-seat wins too, over a few thousand runs (`tools bots <id> --runs 4000`): a 2-point seat bias hides in 400 runs. Lantern Tower's bots once had one from all gusting the same tower on the same tick; Sky Lanterns' from bots pressing on alternate ticks, and from where the sights started.
+- Bots that need fresh presses: don't press only on even ticks (it favours one tick parity). Press when the action is possible; if the action starts a cooldown, the next tick's release comes for free.
 - Every new minigame must also pass `tools net-check <id>`, since the game plays online now.
 - Possible later follow-ups (not roadmap items yet): a pause menu on the board (back to the title), more save slots.

@@ -134,6 +134,7 @@ minigame-lantern-push = Lantern Push
 minigame-firefly-catch = Firefly Catch
 minigame-lantern-echo = Lantern Echo
 minigame-lantern-tower = Lantern Tower
+minigame-sky-lanterns = Sky Lanterns
 
 ## Quick Draw
 quick-draw-title = QUICK DRAW
@@ -211,6 +212,25 @@ lantern-tower-charge = gust { $charge }/{ $needed }
 lantern-tower-gust-ready = GUST READY: B!
 lantern-tower-gusted = gusted!
 lantern-tower-your-turn = your turn
+
+## Sky Lanterns
+sky-lanterns-title = SKY LANTERNS
+sky-lanterns-how = Paper lanterns drift up the night sky. Move your sight onto one and fire a spark to light it in your colour. Golden lanterns are worth 3. A spark that hits nothing fizzles for a moment.
+sky-lanterns-stick = move your sight (in 1v3 the three fly)
+sky-lanterns-a = fire a spark
+sky-lanterns-b = dash (the three in 1v3)
+sky-lanterns-goal = Light the most lanterns in 40 seconds!
+sky-lanterns-goal-teams = Light the most lanterns with your partner in 40 seconds!
+sky-lanterns-goal-solo = { $player } has the only sight: light the other three's lanterns 23 times in 40 seconds! The three fly and hide behind the other lanterns, which block sparks.
+sky-lanterns-go = FIRE!
+sky-lanterns-points = { $points } points
+sky-lanterns-team = team: { $points }
+sky-lanterns-hits = { $hits }/{ $needed } hits
+sky-lanterns-lit-times = lit { $times ->
+    [one] once
+   *[other] { $times } times
+}
+sky-lanterns-dash-ready = dash ready: B
 
 ## Board
 board-turn-order = Turn order

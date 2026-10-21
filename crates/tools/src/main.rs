@@ -13,6 +13,7 @@ use minigame_lantern_echo::LanternEcho;
 use minigame_lantern_push::LanternPush;
 use minigame_lantern_tower::LanternTower;
 use minigame_quick_draw::QuickDraw;
+use minigame_sky_lanterns::SkyLanterns;
 use net::check::{OnlineMatch, OnlineReport};
 use net::{Faults, UdpTransport};
 use sim_board::{Board, Event, Game, Rules, Summary};
@@ -152,6 +153,7 @@ fn checker(id: &str) -> Option<fn(u64) -> Result<(), String>> {
         FireflyCatch::ID => Some(sim_check::check_all::<FireflyCatch>),
         LanternEcho::ID => Some(sim_check::check_all::<LanternEcho>),
         LanternTower::ID => Some(sim_check::check_all::<LanternTower>),
+        SkyLanterns::ID => Some(sim_check::check_all::<SkyLanterns>),
         _ => None,
     }
 }
@@ -167,6 +169,7 @@ fn net_checker(id: &str) -> Option<NetChecker> {
         FireflyCatch::ID => Some(play_over_udp::<FireflyCatch>),
         LanternEcho::ID => Some(play_over_udp::<LanternEcho>),
         LanternTower::ID => Some(play_over_udp::<LanternTower>),
+        SkyLanterns::ID => Some(play_over_udp::<SkyLanterns>),
         _ => None,
     }
 }
@@ -227,6 +230,7 @@ fn checker_setups(id: &str, seed: u64) -> Vec<sim_check::Setup> {
         FireflyCatch::ID => sim_check::setups::<FireflyCatch>(seed),
         LanternEcho::ID => sim_check::setups::<LanternEcho>(seed),
         LanternTower::ID => sim_check::setups::<LanternTower>(seed),
+        SkyLanterns::ID => sim_check::setups::<SkyLanterns>(seed),
         _ => Vec::new(),
     }
 }

@@ -21,6 +21,7 @@ mod runner;
 mod save;
 mod scenery;
 mod sfx;
+mod sky_lanterns;
 
 use std::path::PathBuf;
 

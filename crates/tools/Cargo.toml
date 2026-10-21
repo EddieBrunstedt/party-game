@@ -15,6 +15,7 @@ minigame-lantern-push.workspace = true
 minigame-firefly-catch.workspace = true
 minigame-lantern-echo.workspace = true
 minigame-lantern-tower.workspace = true
+minigame-sky-lanterns.workspace = true
 clap.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]

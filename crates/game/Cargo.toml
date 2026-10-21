@@ -11,6 +11,7 @@ minigame-lantern-push.workspace = true
 minigame-firefly-catch.workspace = true
 minigame-lantern-echo.workspace = true
 minigame-lantern-tower.workspace = true
+minigame-sky-lanterns.workspace = true
 minigame-registry.workspace = true
 sim-board.workspace = true
 net.workspace = true
