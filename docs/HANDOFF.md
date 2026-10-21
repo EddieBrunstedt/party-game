@@ -4,6 +4,7 @@ Briefing for the next session. Earlier sessions' notes are in git history (`git 
 
 ## Done this session
 
+- A d-pad fix from Lantern Lottery's playtest: a released DualSense stick rests slightly off centre, which hid the d-pad in every minigame; `--log-input` now logs each person's input as minigames read it.
 - Lantern Lottery (secret picks with luck, all four formats; two sides take turns hiding moths, the 1v3 solo hides the moth) built to playable and ticked: the previous session left the simulation and bots uncommitted, this one added the view, strings, bots report and screenshots. Rules, decisions, the bots report and the playtest command are under its item in `docs/ROADMAP.md`. A view test checks that nothing on screen depends on a pick before the reveal.
 - Sky Lanterns (shooting gallery, all four formats; in 1v3 the three fly lanterns and hide while the solo shoots, the developer's choice) built to playable and ticked; rules, decisions, the bots report and the playtest command are under its item in `docs/ROADMAP.md`.
 - Lantern Tower (stacking race with sabotage, all four formats) built to playable and ticked; rules, decisions, the bots report and the playtest command are under its item in `docs/ROADMAP.md`. The developer chose the sabotage (a gust that speeds up rivals' blocks) and that a miss knocks the top floor off. The developer's playtest found the outer towers harder to judge; the camera is now orthographic, and it's committed.
@@ -35,7 +36,7 @@ Briefing for the next session. Earlier sessions' notes are in git history (`git 
 
 ## Waiting on the developer's playtests
 
-- Lantern Lottery: see "Needs human playtest" under its item (pick and reveal timings, whether taking turns reads clearly, whether four players feel too random, picking blind).
+- Lantern Lottery: playtest 1 is done (see its item in `docs/ROADMAP.md`). The d-pad bug it found is fixed for every minigame (a pressed d-pad now wins over a stick resting off centre). Still open, for the developer to decide, not a roadmap item: never seeing your own pick felt hard to trust. Offered: you get the lantern you point at when you press A, a short rumble when the lock-in counts, and "point at a lantern first" if A is pressed without pointing; or rumble only; or leave it. Don't build any of these unless the developer asks.
 - Sky Lanterns: see "Needs human playtest" under its item. The open question is whether a shooting gallery, where the better shooter wins almost every time, needs a catch-up twist.
 
 ### Lantern Tower's camera (fixed)
