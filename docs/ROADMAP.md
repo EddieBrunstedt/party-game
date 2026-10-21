@@ -209,9 +209,9 @@ Content targets are in DESIGN.md §6 (about 30 minigames at launch). Only the mi
 
 ### Minigames
 
-The session picks which minigame to build; the developer left the choice open. Choose from `MINIGAME_IDEAS.md`, preferring ideas that add something the current three lack:
-- **Formats:** only Quick Draw supports duel, which launch needs; none is built around 1v3 or 2v2 from the start.
-- **Mechanics** not covered yet: sequence memory, aiming, secret simultaneous picks (quiz, pure luck), lanes and timing races, platforming.
+The session picks which minigame to build; the developer left the choice open. Choose from `MINIGAME_IDEAS.md`, preferring ideas that add something the current ones lack:
+- **Formats:** Quick Draw, Lantern Push and Lantern Echo support duel; none is built around an asymmetric 1v3 (the solo doing something different from the three) or real 2v2 teamwork.
+- **Mechanics** not covered yet: aiming, secret simultaneous picks (quiz, pure luck), timing a press against a moving thing (tower stack, jump-and-duck), sabotage, platforming. Sequence memory and lane races are covered by Lantern Echo.
 - **Cost:** ideas that need picture content, a question bank or platforming physics are bigger jobs. Say so in the item, or build the shared piece as its own item first.
 
 Firefly Catch is **on hold** (see its item): don't tune it, and don't count it as a model of what's fun.
