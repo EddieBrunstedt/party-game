@@ -28,10 +28,10 @@ Lessons from this session:
 
 ## Done this session
 
-- **Tabletop Rally** (this commit): see its item in `docs/ROADMAP.md`. The developer chose off-screen knockout, handmade tabletop tracks and the 1v3 getaway car; the stick first pointed the way, and after trying it the developer asked for Micro Machines' car-relative steering (left and right swap when driving down the screen). This session's calls: closing in after 6 s, fixed-deceleration grip, restarting on a straight, a getaway car 1% faster and centred by the camera, and per-difficulty getaway-bot care.
+- **Tabletop Rally** (this commit): see its item in `docs/ROADMAP.md`. The developer chose off-screen knockout, handmade tabletop tracks and the 1v3 getaway car; the stick first pointed the way, and after trying it the developer asked for Micro Machines' car-relative steering (left and right swap when driving down the screen). After that the developer asked for longer matches: each round now starts with the camera wide and zooms in steadily. This session's calls: the zoom's pace (hold 3 s, 15 s to the tightest), fixed-deceleration grip, restarting on a straight, a getaway car 1% faster and centred by the camera, and per-difficulty getaway-bot care.
 
 Tuning knobs, if a playtest asks for changes:
-- Tabletop Rally: handling in `MAX_SPEED`, `ACCEL`, `BRAKE`, `GRIP`, `TURN_STANDING`/`TURN_MOVING`, `OFF_ROAD_SPEED`; round length in `VIEW_HALF`, `CLOSE_IN_AFTER`, `CLOSE_IN_TICKS`, `LOOKAHEAD`; 1v3 in `GETAWAY_SPEED`, `HEAD_START`, `CATCH_REACH` and the bots' `getaway_care`/`chase`. Bots in `bot::skill` (corner, wobble, slip, lapse). Tracks in `track.rs` (control points, props by `Across`); the view's framing in `FRAME_MARGIN_X`/`_Y` and `PITCH`.
+- Tabletop Rally: handling in `MAX_SPEED`, `ACCEL`, `BRAKE`, `GRIP`, `TURN_STANDING`/`TURN_MOVING`, `OFF_ROAD_SPEED`; round length in `VIEW_HALF_START`, `VIEW_HALF_MIN`, `ZOOM_AFTER`, `ZOOM_TICKS`, `LOOKAHEAD` (`VIEW_HALF` is where the "closing in" warning starts); 1v3 in `GETAWAY_SPEED`, `HEAD_START`, `CATCH_REACH` and the bots' `getaway_care`/`chase`. Bots in `bot::skill` (corner, wobble, slip, lapse). Tracks in `track.rs` (control points, props by `Across`); the view's framing in `FRAME_MARGIN_X`/`_Y` and `PITCH`.
 - Lantern Derby: bots in `bot::skill` (picks, aim_error, power_error, pause, reaction). 1v3 balance comes from the ratio of `TRIO_GOAL` to `BARKER_GOAL` (the lid stops about 38% of the value) and the lid's `SHUT_TICKS`, `LID_COOLDOWN`, `LID_REACH` and `CURSOR_SPEED`. Feel: `CHARGE_TICKS`, `AIM_DIVISOR`, `WOBBLE`, `RIM` and `HOLES`.
 - Hedge Maze: bots in `bot::skill` (delay, noise, flare_dark, fear, urgency, intercepts). 1v3: `GHOST_SPEED`, `RESPAWN_TICKS`, `GHOST_RACE_TICKS` and `TRIO_NEEDED` (the card's text and an `intro.rs` test pin 2 and 20 s). Generator: `NEWEST_PERCENT`, `MIN_PATH`, `CANDIDATES` and `LOOPS`.
 
@@ -39,7 +39,7 @@ Tuning knobs, if a playtest asks for changes:
 
 None of these block new minigames. Don't build any of the offered changes unless the developer asks.
 
-- Tabletop Rally: see "Needs human playtest" under its item (how the car-relative steering feels, the slide in fast bends, whether the closing-in rectangle reads, match length with four, the inside-lane start, the getaway car's edge). It has no engine sound yet.
+- Tabletop Rally: see "Needs human playtest" under its item (how the car-relative steering feels, the wide start and the zoom's pace, the slide in fast bends, whether the closing-in rectangle reads, match length with four, the inside-lane start, the getaway car's edge). It has no engine sound yet.
 - Lantern Derby: see "Needs human playtest" under its item (the meter's speed and readability, the aim's speed, whether the luck feels fair, whether the barker is fun).
 - Hedge Maze: see "Needs human playtest" under its item. Open question: equal bots often tie because the maze is symmetric. A tie-break (e.g. total finishing time) would cut that, but ties share the win in every other minigame.
 - Musical Stools: see "Needs human playtest" under its item. One rule needs the developer's OK: in 1v3 the cat's **dash catches** a runner (out for the round). With the agreed version (the cat only shoves), the cat won 0–1%; with catching it wins 48–53%. The other levers that were tried are in the item's decisions.

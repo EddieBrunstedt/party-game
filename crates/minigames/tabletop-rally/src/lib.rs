@@ -1,18 +1,19 @@
 //! Tabletop Rally: toy cars racing round hand-laid tracks on a giant table, seen from above, in
-//! the style of Micro Machines' multiplayer. The stick turns your car towards where it points
-//! on screen, A drives and B brakes and reverses. The camera follows whoever is furthest along,
-//! and a car that drops off the edge of the screen (or off the table) is out of the round. The
-//! last car left takes the round and a point, and the next round starts where it got to, every
-//! car side by side. First to [`WIN_POINTS`] wins. A round that drags on closes in: after
-//! [`CLOSE_IN_AFTER`] the view shrinks until someone drops out, and at [`ROUND_LIMIT`] the car
-//! furthest along takes it. In 2v2 a team takes the round once only its cars are left.
+//! the style of Micro Machines' multiplayer. The stick steers left and right from the car's own
+//! point of view (driving down the screen, they swap), A drives and B brakes and reverses. The
+//! camera follows whoever is furthest along, and a car that drops off the edge of the screen (or
+//! off the table) is out of the round. The last car left takes the round and a point, and the
+//! next round starts where it got to, every car side by side. First to [`WIN_POINTS`] wins. Each
+//! round starts with the camera wide ([`VIEW_HALF_START`]) and, after [`ZOOM_AFTER`], zooms in
+//! steadily, so the edge gets closer and closer; at [`ROUND_LIMIT`] the car furthest along takes
+//! the round. In 2v2 a team takes the round once only its cars are left.
 //!
 //! In 1v3 the solo is the getaway car: it starts [`HEAD_START`] ahead and the camera follows it.
 //! A chaser that touches it takes the round for the three; it takes the round by leaving all
 //! three off screen (or by lasting to [`ROUND_LIMIT`]).
 //!
 //! The table uses `sim_core::physics`' plane: `x` to the right, `y` towards the bottom of the
-//! screen (stick up drives up the screen).
+//! screen.
 
 pub mod track;
 
@@ -33,17 +34,19 @@ pub const INTRO_TICKS: u16 = sim_core::COUNTDOWN_TICKS;
 pub const WIN_POINTS: u32 = 3;
 
 /// Half the screen, in table units: a car whose centre gets further than this (plus its radius)
-/// from the camera is off screen.
+/// from the camera is off screen. Each round starts wide, so there's room to find the controls...
+pub const VIEW_HALF_START: Vec2 = Vec2::new(13.0, 8.125);
+/// ...holds that for `ZOOM_AFTER`, then zooms in steadily, passing this size (from which the
+/// screen warns it's closing in)...
 pub const VIEW_HALF: Vec2 = Vec2::new(8.0, 5.0);
-/// How far the view closes in by the end.
+/// ...down to this one `ZOOM_TICKS` later.
 pub const VIEW_HALF_MIN: Vec2 = Vec2::new(3.2, 2.0);
-/// A round starts closing in this long after the start...
-pub const CLOSE_IN_AFTER: u16 = 6 * 60;
-/// ...and is fully closed in this long later...
-pub const CLOSE_IN_TICKS: u16 = 6 * 60;
-/// ...and over at this tick of the round however many cars are left.
-pub const ROUND_LIMIT: u16 = CLOSE_IN_AFTER + CLOSE_IN_TICKS + 3 * 60;
-/// The camera aims this far ahead of the car it follows, along the track (not in 1v3).
+pub const ZOOM_AFTER: u16 = 3 * 60;
+pub const ZOOM_TICKS: u16 = 15 * 60;
+/// A round is over at this tick however many cars are left.
+pub const ROUND_LIMIT: u16 = ZOOM_AFTER + ZOOM_TICKS + 3 * 60;
+/// The camera aims this far ahead of the car it follows, along the track (not in 1v3), at the
+/// [`VIEW_HALF`] size; less as it zooms in, more while it's wide.
 pub const LOOKAHEAD: f32 = 2.5;
 /// The fraction of the way to its aim the camera moves each tick.
 pub const CAMERA_FOLLOW: f32 = 0.1;
@@ -75,7 +78,7 @@ const PROP_RESTITUTION: f32 = 0.35;
 pub const BUMP_IMPULSE: f32 = 1.2;
 
 /// 1v3: the getaway car starts this far ahead of the chasers.
-pub const HEAD_START: f32 = 3.0;
+pub const HEAD_START: f32 = 4.5;
 /// 1v3: a chaser within this of the getaway car (centre to centre) has caught it.
 pub const CATCH_REACH: f32 = 2.0 * CAR_RADIUS + 0.04;
 
@@ -204,6 +207,8 @@ pub struct State {
     pub round: u8,
     /// Points by team ([`Format::team`]); in 1v3 rounds won by each side.
     pub points: [u32; MAX_PLAYERS],
+    /// The round tick the last round ended on, so the view holds its zoom through the result.
+    pub zoomed_at: u16,
     /// The team that took the last scored round, and how.
     pub round_winner: Option<u8>,
     pub round_end: Option<RoundEnd>,
@@ -269,18 +274,21 @@ impl State {
             .filter(|s| self.cars[s.index()].out.is_none())
     }
 
-    /// Half the screen right now: it closes in late in a round.
+    /// Half the screen right now: wide at the start of a round, zooming in as it goes on. It
+    /// stays where it got to while the round's result shows.
     pub fn view_half(&self) -> Vec2 {
         let t = match self.phase {
             Phase::Racing { t } => t,
-            _ => 0,
+            Phase::Result { .. } | Phase::Finished => self.zoomed_at,
+            Phase::Intro { .. } | Phase::Grid { .. } => 0,
         };
-        let k = (t.saturating_sub(CLOSE_IN_AFTER) as f32 / CLOSE_IN_TICKS as f32).min(1.0);
-        VIEW_HALF.lerp(VIEW_HALF_MIN, k)
+        let k = (t.saturating_sub(ZOOM_AFTER) as f32 / ZOOM_TICKS as f32).min(1.0);
+        VIEW_HALF_START.lerp(VIEW_HALF_MIN, k)
     }
 
+    /// The screen has zoomed in past [`VIEW_HALF`]: it's getting tight.
     pub fn closing_in(&self) -> bool {
-        matches!(self.phase, Phase::Racing { t } if t >= CLOSE_IN_AFTER)
+        matches!(self.phase, Phase::Racing { .. }) && self.view_half().y < VIEW_HALF.y
     }
 
     pub fn on_screen(&self, pos: Vec2) -> bool {
@@ -314,7 +322,8 @@ impl State {
         }
         let track = self.track();
         let s = car.progress;
-        Some(car.body.pos + (track.point_at(s + LOOKAHEAD) - track.point_at(s)))
+        let ahead = LOOKAHEAD * self.view_half().y / VIEW_HALF.y;
+        Some(car.body.pos + (track.point_at(s + ahead) - track.point_at(s)))
     }
 
     /// The teams with a car still in the round.
@@ -361,7 +370,7 @@ impl State {
         if let Some(aim) = self.camera_aim() {
             self.camera = aim;
         } else {
-            self.camera = track.point_at(s + LOOKAHEAD);
+            self.camera = track.point_at(s);
         }
     }
 
@@ -641,6 +650,7 @@ impl Minigame for TabletopRally {
             camera: Vec2::ZERO,
             round: 0,
             points: [0; MAX_PLAYERS],
+            zoomed_at: 0,
             round_winner: None,
             round_end: None,
             outcome: None,
@@ -688,6 +698,7 @@ impl Minigame for TabletopRally {
                 state.knock_out();
                 state.phase = match state.round_result(t, &racing_before) {
                     Some((team, end)) => {
+                        state.zoomed_at = t;
                         state.score(team, end);
                         Phase::Result { t: 0 }
                     }
@@ -796,7 +807,7 @@ mod bot {
                 lapse: 10,
                 slip: 20,
                 spread: 0.5,
-                getaway_care: 15,
+                getaway_care: 35,
                 chase: 4.0,
             },
             Difficulty::Normal => Skill {
@@ -1235,14 +1246,25 @@ mod tests {
     fn a_long_round_closes_in_and_ends() {
         let mut run = new_run(2, Format::FreeForAll);
         to_racing(&mut run);
-        run.game.phase = Phase::Racing { t: CLOSE_IN_AFTER };
+        assert_eq!(run.game.view_half(), VIEW_HALF_START);
+        run.game.phase = Phase::Racing { t: ZOOM_AFTER };
+        assert_eq!(run.game.view_half(), VIEW_HALF_START);
+        assert!(!run.game.closing_in());
+        // Steadily in: past the warning size partway, down to the smallest at the end.
+        let mut last = VIEW_HALF_START.y;
+        for t in (ZOOM_AFTER..=ZOOM_AFTER + ZOOM_TICKS).step_by(60) {
+            run.game.phase = Phase::Racing { t };
+            assert!(run.game.view_half().y <= last);
+            last = run.game.view_half().y;
+        }
         assert!(run.game.closing_in());
-        assert_eq!(run.game.view_half(), VIEW_HALF);
-        run.game.phase = Phase::Racing {
-            t: CLOSE_IN_AFTER + CLOSE_IN_TICKS,
-        };
-        assert!(run.game.view_half().distance(VIEW_HALF_MIN) < 1e-5);
+        assert!(run.game.view_half().distance(VIEW_HALF_MIN) < 1e-4);
+        // Both cars still on the smallest screen at the limit: the furthest along takes it.
         run.game.phase = Phase::Racing { t: ROUND_LIMIT - 1 };
+        run.game.camera = run.game.cars[0]
+            .body
+            .pos
+            .lerp(run.game.cars[1].body.pos, 0.5);
         run.step(NONE);
         assert_eq!(run.game.round_end, Some(RoundEnd::TimeUp));
     }
@@ -1294,7 +1316,8 @@ mod tests {
         let mut run = new_run(4, Format::OneVsThree { solo: Seat(1) });
         to_racing(&mut run);
         for seat in [0, 2, 3] {
-            run.game.cars[seat].body.pos = run.game.camera + Vec2::new(VIEW_HALF.x + 1.0, 0.0);
+            run.game.cars[seat].body.pos =
+                run.game.camera + Vec2::new(VIEW_HALF_START.x + 1.0, 0.0);
         }
         run.step(NONE);
         assert_eq!(run.game.round_end, Some(RoundEnd::Escaped));

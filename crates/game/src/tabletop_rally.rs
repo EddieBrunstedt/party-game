@@ -14,8 +14,8 @@ use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use minigame_tabletop_rally::track::Prop;
 use minigame_tabletop_rally::{
-    Car, Out, Phase, PropKind, RoundEnd, State, TABLE_HALF, TabletopRally, Theme, Track, VIEW_HALF,
-    WIN_POINTS,
+    Car, Out, Phase, PropKind, RoundEnd, State, TABLE_HALF, TabletopRally, Theme, Track,
+    VIEW_HALF_START, WIN_POINTS,
 };
 use sim_core::physics::Vec2 as SimVec2;
 use sim_core::{Format, Seat};
@@ -118,28 +118,41 @@ fn camera_transform(target: SimVec2) -> Transform {
 }
 
 /// The window's minimum view: the knockout rectangle with a margin, as seen from the tilt.
-fn framed_size() -> (f32, f32) {
+fn framed_size(half: SimVec2) -> (f32, f32) {
     (
-        VIEW_HALF.x * 2.0 * FRAME_MARGIN_X,
-        VIEW_HALF.y * 2.0 * FRAME_MARGIN_Y * PITCH.sin(),
+        half.x * 2.0 * FRAME_MARGIN_X,
+        half.y * 2.0 * FRAME_MARGIN_Y * PITCH.sin(),
     )
 }
 
+/// What the camera shows for a knockout rectangle of `half`: the camera zooms with it.
+fn scaling_mode(half: SimVec2) -> ScalingMode {
+    let (min_width, min_height) = framed_size(half);
+    ScalingMode::AutoMin {
+        min_width,
+        min_height,
+    }
+}
+
 fn camera_projection() -> Projection {
-    let (min_width, min_height) = framed_size();
     Projection::Orthographic(OrthographicProjection {
-        scaling_mode: ScalingMode::AutoMin {
-            min_width,
-            min_height,
-        },
+        scaling_mode: scaling_mode(VIEW_HALF_START),
         ..OrthographicProjection::default_3d()
     })
+}
+
+/// The knockout rectangle's size between the last two ticks.
+fn view_half(active: &ActiveRun<TabletopRally>, fixed: &Time<Fixed>) -> SimVec2 {
+    active
+        .previous
+        .view_half()
+        .lerp(active.run.game.view_half(), blend(fixed))
 }
 
 /// The share of the window's width and height the knockout rectangle `half` covers, for a
 /// window of `aspect` (width over height).
 fn rectangle_share(half: SimVec2, aspect: f32) -> (f32, f32) {
-    let (min_width, min_height) = framed_size();
+    let (min_width, min_height) = framed_size(half);
     let (width, height) = if aspect >= min_width / min_height {
         (min_height * aspect, min_height)
     } else {
@@ -926,16 +939,20 @@ fn light_bar_color(half: usize) -> LinearRgba {
 fn follow_camera(
     active: Res<ActiveRun<TabletopRally>>,
     fixed: Res<Time<Fixed>>,
-    mut camera: Query<&mut Transform, (With<CameraRig>, Without<TableLamp>)>,
-    mut lamp: Query<&mut Transform, With<TableLamp>>,
+    mut camera: Query<(&mut Transform, &mut Projection), With<CameraRig>>,
+    mut lamp: Query<&mut Transform, (With<TableLamp>, Without<CameraRig>)>,
 ) {
     let at = smooth(
         active.previous.camera,
         active.run.game.camera,
         blend(&fixed),
     );
-    for mut transform in &mut camera {
+    let mode = scaling_mode(view_half(&active, &fixed));
+    for (mut transform, mut projection) in &mut camera {
         *transform = camera_transform(at);
+        if let Projection::Orthographic(ortho) = projection.as_mut() {
+            ortho.scaling_mode = mode;
+        }
     }
     for mut transform in &mut lamp {
         transform.translation = world(at) + LAMP_HEIGHT;
@@ -1335,7 +1352,7 @@ mod tests {
     #[test]
     fn the_knockout_rectangle_fits_any_window_with_its_edge_in_view() {
         for aspect in [16.0 / 10.0, 16.0 / 9.0, 4.0 / 3.0, 21.0 / 9.0] {
-            let (w, h) = rectangle_share(VIEW_HALF, aspect);
+            let (w, h) = rectangle_share(VIEW_HALF_START, aspect);
             assert!(w < 1.0 && h < 1.0, "{aspect}: {w} {h}");
             // At least one side is framed with exactly its margin, and the other with more.
             let tight_x = (w - 1.0 / FRAME_MARGIN_X).abs() < 1e-4;
