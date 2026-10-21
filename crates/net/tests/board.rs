@@ -1,7 +1,8 @@
 //! Whole board games across a host and two clients over a lossy in-memory network. Each
 //! client's player is a bot deciding on that client's copy of the board and sending its intent,
 //! as a human would; the host plays its own player, the bot seat and the minigames (headless,
-//! with bots). Every client's copy must match the host's after every update.
+//! with bots). Every client's copy must match the host's after every update. A saved game
+//! picked up online plays on exactly as it would have.
 
 use std::time::Duration;
 
@@ -11,7 +12,7 @@ use net::session::{Client, ClientEvent, Host, HostEvent};
 use net::{
     Clock, Endpoint, EndpointConfig, Faults, Faulty, MemoryAddr, MemoryNetwork, MemoryTransport,
 };
-use sim_board::{Awaiting, Board, Game, Rules, bot_intent};
+use sim_board::{Awaiting, Board, Game, Rules, Save, SavedSeat, bot_intent, play_bots};
 use sim_core::registry::play_with_bots;
 use sim_core::{Difficulty, MAX_PLAYERS, checksum};
 
@@ -46,13 +47,16 @@ struct Follower {
     updates: usize,
 }
 
-fn play(seed: u64) {
+/// Plays a game across a host and two clients: a new one, or `resume` picked up again.
+/// Returns the finished game's checksum.
+fn play(seed: u64, resume: Option<&Save>) -> u64 {
     let network = MemoryNetwork::new();
     let clock = Clock::manual();
-    let mut host = Host::new(
-        endpoint(&network, &clock, 1, true),
-        LobbyState::new(4, 3, false),
-    );
+    let lobby = match resume {
+        Some(save) => LobbyState::resuming(4, save),
+        None => LobbyState::new(4, 3, false),
+    };
+    let mut host = Host::new(endpoint(&network, &clock, 1, true), lobby);
     let mut followers: Vec<_> = (2..=3)
         .map(|n| Follower {
             client: Client::connect(endpoint(&network, &clock, n, false), MemoryAddr(1)),
@@ -95,14 +99,18 @@ fn play(seed: u64) {
         rounds: lobby.rounds,
         ..Rules::default()
     };
-    let mut game = Game::new(
-        Board::meadow(),
-        rules,
-        MAX_PLAYERS,
-        start.seed,
-        minigame_registry::ALL,
-    );
+    let mut game = match resume {
+        Some(save) => save.game.clone(),
+        None => Game::new(
+            Board::meadow(),
+            rules,
+            MAX_PLAYERS,
+            start.seed,
+            minigame_registry::ALL,
+        ),
+    };
     host.share_game(&game);
+    let first = checksum(&game);
 
     for _ in 0..200_000 {
         // The host decides for its own seat and the bot, and plays minigames headlessly.
@@ -139,6 +147,10 @@ fn play(seed: u64) {
                 if let ClientEvent::Board(update) = event {
                     f.updates += 1;
                     match (&update, f.game.as_mut()) {
+                        (BoardUpdate::Snapshot(snapshot), None) => {
+                            assert_eq!(checksum(&**snapshot), first, "the game as the host has it");
+                            f.game = Some((**snapshot).clone());
+                        }
                         (BoardUpdate::Snapshot(snapshot), _) => f.game = Some((**snapshot).clone()),
                         (_, Some(copy)) => {
                             if let Err(desync) = follow(copy, &update) {
@@ -167,13 +179,14 @@ fn play(seed: u64) {
             .iter()
             .all(|f| f.game.as_ref().map(checksum) == Some(host_sum));
         if matches!(game.awaiting(), Awaiting::GameOver) && caught_up {
-            // 4 turn-order rolls, 12 turns of one or two decisions, 3 minigames, a snapshot.
+            // New: 4 turn-order rolls, 12 turns of one or two decisions, 3 minigames, a
+            // snapshot. Resumed in round 2: at least 8 turns and 2 minigames.
             let updates: Vec<_> = followers.iter().map(|f| f.updates).collect();
             assert!(
-                updates[0] > 20 && updates[0] == updates[1],
+                updates[0] > 10 && updates[0] == updates[1],
                 "updates seen: {updates:?}"
             );
-            return;
+            return host_sum;
         }
     }
     panic!(
@@ -185,6 +198,55 @@ fn play(seed: u64) {
 #[test]
 fn a_board_game_plays_to_the_end_across_three_machines() {
     for seed in [1, 2] {
-        play(seed);
+        play(seed, None);
+    }
+}
+
+/// A 3-round game saved at the start of round 2, as the couch or a host would have saved it.
+fn saved_in_round_two(seed: u64) -> Save {
+    let rules = Rules {
+        rounds: 3,
+        ..Rules::default()
+    };
+    let mut game = Game::new(Board::meadow(), rules, 4, seed, minigame_registry::ALL);
+    while game.round() < 2 || !game.between_turns() {
+        match game.awaiting() {
+            Awaiting::Intent { seat, .. } => {
+                let intent = bot_intent(&game, seat, Difficulty::Normal).unwrap();
+                game.apply(seat, intent).unwrap();
+            }
+            Awaiting::Minigame(plan) => {
+                let entry = minigame_registry::find(&plan.id).unwrap();
+                let difficulty = [Difficulty::Normal; MAX_PLAYERS];
+                let outcome =
+                    play_with_bots(entry, plan.seed, plan.players, plan.format, difficulty);
+                game.apply_minigame_outcome(outcome.unwrap()).unwrap();
+            }
+            Awaiting::GameOver => unreachable!("saved before the end"),
+        }
+    }
+    let save = Save {
+        game,
+        seats: [0, 1, 2, 3].map(|character| SavedSeat {
+            character,
+            human: character < 3,
+        }),
+        bots: Difficulty::Normal,
+        pause_on_controller_lost: false,
+    };
+    // Through the bytes, as from a file.
+    Save::decode(&save.encode()).unwrap()
+}
+
+#[test]
+fn a_saved_game_picked_up_online_plays_on_as_it_would_have() {
+    for seed in [3, 4] {
+        let save = saved_in_round_two(seed);
+        let offline = play_bots(
+            save.game.clone(),
+            Difficulty::Normal,
+            minigame_registry::ALL,
+        );
+        assert_eq!(play(seed, Some(&save)), offline.unwrap().checksum);
     }
 }

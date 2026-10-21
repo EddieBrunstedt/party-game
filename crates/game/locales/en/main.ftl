@@ -12,10 +12,12 @@ difficulty-hard = Hard
 
 ## Title
 title-tagline = A board game of lanterns, fireflies and friendly shoving
+title-continue = Continue
 title-board = Board game
 title-free-play = Free play
 title-online = Play online
 title-host-board = Host a board game
+title-host-saved = Host the saved game
 title-host-free-play = Host free play
 title-join = Join a game
 title-back = Back
@@ -25,6 +27,9 @@ title-controls = Stick / arrows to choose, A / Space to confirm
 ## Join
 join-title = Who's playing?
 join-hint = Press A to join. Left/right picks your character, B leaves.
+join-hint-resume = Press A to take your seat back. Left/right picks which seat, B leaves.
+join-not-in-game = Not in this game
+join-resume-round = Saved game: round { $round } of { $rounds }
 join-press-a = Press A to join
     (otherwise a { $difficulty } bot)
 join-keyboard = keyboard
@@ -42,6 +47,7 @@ join-pause = Pause when a controller disconnects: { $pause } (Y)
 join-pause-on = On
 join-pause-off = Off
 join-host-settings = Bots: { $difficulty }   Rounds: { $rounds }   Pause when a controller disconnects: { $pause }   (the host chooses)
+join-host-settings-resume = Saved game: round { $round } of { $rounds }   Bots: { $difficulty }   Pause when a controller disconnects: { $pause }   (the host chooses)
 join-host-settings-free-play = Bots: { $difficulty }   Pause when a controller disconnects: { $pause }   (the host chooses)
 join-waiting-host = Waiting for the host to press Start
 join-starting = Starting...
@@ -67,6 +73,11 @@ connect-socket-error = Couldn't open a network port: { $error }
 notice-host-left = The host closed the game.
 notice-host-lost = Lost the connection to the host.
 notice-ended = You ended the game.
+notice-ended-saved = You ended the game. Continue picks it up from the last turn.
+notice-no-save = There is no saved game.
+notice-save-unreadable = Couldn't read the saved game: { $error }
+notice-save-version = The saved game is from another version and can't be continued.
+notice-save-damaged = The saved game is damaged and can't be continued.
 notice-host-failed = Couldn't host on port { $port }: { $error }
 
 ## Free play

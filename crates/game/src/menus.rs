@@ -12,7 +12,7 @@ use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::prelude::*;
 use net::lobby::{LobbyAction, LobbyState, PeerId};
 use net::session::Launch;
-use sim_board::{Board, Game, Rules};
+use sim_board::{Board, Game, Rules, Save};
 use sim_core::{Difficulty, Format, FormatKind, MAX_PLAYERS, PlayerSetup, RunConfig, Seat};
 
 use crate::audio::{Sfx, Sound};
@@ -22,6 +22,7 @@ use crate::flow::{AppState, MinigameLaunch, Origin};
 use crate::online::{self, NetSettings, Notice, Online, OnlineEvent, OnlineStart, Waiting};
 use crate::palette::{MOONLIGHT, NIGHT_SKY, seat_color, seat_label};
 use crate::runner::{Controller, Pad, RunRules, RunSetup, Seats};
+use crate::save::{Resumed, SaveSlot};
 use crate::scenery::{night_camera, spawn_fireflies, spawn_lantern_folk, spawn_paper_lantern};
 use crate::{GAME_TITLE, minigames, tr};
 
@@ -305,28 +306,41 @@ struct TitleMenu {
     selected: usize,
     /// On the "Play online" page instead of the main one.
     online: bool,
+    /// There's a saved game to continue.
+    saved: bool,
 }
 
-const TITLE_ITEMS: [&str; 4] = [
-    "title-board",
-    "title-free-play",
-    "title-online",
-    "title-quit",
-];
-const ONLINE_ITEMS: [&str; 4] = [
-    "title-host-board",
-    "title-host-free-play",
-    "title-join",
-    "title-back",
-];
+/// The most items a title page has.
+const MAX_TITLE_ITEMS: usize = 5;
 
 impl TitleMenu {
-    fn items(&self) -> &'static [&'static str; 4] {
-        if self.online {
-            &ONLINE_ITEMS
+    /// The page's items, as Fluent keys.
+    fn items(&self) -> Vec<&'static str> {
+        let saved = |key| self.saved.then_some(key);
+        let items = if self.online {
+            [
+                Some("title-host-board"),
+                saved("title-host-saved"),
+                Some("title-host-free-play"),
+                Some("title-join"),
+                Some("title-back"),
+            ]
         } else {
-            &TITLE_ITEMS
-        }
+            [
+                saved("title-continue"),
+                Some("title-board"),
+                Some("title-free-play"),
+                Some("title-online"),
+                Some("title-quit"),
+            ]
+        };
+        items.into_iter().flatten().collect()
+    }
+
+    /// Turns to a page with `key` selected.
+    fn open(&mut self, online: bool, key: &str) {
+        self.online = online;
+        self.selected = self.items().iter().position(|k| *k == key).unwrap_or(0);
     }
 }
 
@@ -338,11 +352,24 @@ fn spawn_title(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     notice: Option<Res<Notice>>,
+    menu: Option<ResMut<TitleMenu>>,
+    slot: Res<SaveSlot>,
 ) {
-    commands.init_resource::<TitleMenu>();
+    // Back on the title the menu stays where it was, unless a save came or went.
+    let saved = slot.exists();
+    match menu {
+        Some(menu) if menu.saved == saved => {}
+        Some(mut menu) => {
+            let online = menu.online;
+            *menu = TitleMenu { saved, ..default() };
+            menu.open(online, "");
+        }
+        None => commands.insert_resource(TitleMenu { saved, ..default() }),
+    }
     commands.remove_resource::<Lobby>();
     commands.remove_resource::<ConnectScreen>();
     commands.remove_resource::<OnlineStart>();
+    commands.remove_resource::<Resumed>();
     close_online(&mut commands);
     spawn_backdrop(
         &mut commands,
@@ -363,24 +390,28 @@ fn spawn_title(
     commands.remove_resource::<Notice>();
     let menu = text_column(&mut commands, AppState::Title, -30.0);
     commands.entity(menu).with_children(|menu| {
-        for (i, key) in TITLE_ITEMS.iter().enumerate() {
-            menu.spawn((TitleItem(i), line(tr!(key), 26.0, CREAM)));
+        // Filled in by `title_menu`; pages shorter than this leave the last ones empty.
+        for i in 0..MAX_TITLE_ITEMS {
+            menu.spawn((TitleItem(i), line("", 26.0, CREAM)));
         }
         menu.spawn(line(tr!("title-controls"), 18.0, DIM));
     });
 }
 
-/// Starts hosting a board game (of `rounds`, or the standard length) or free play, or says
-/// why it couldn't. `rules` are where the lobby's settings start.
+/// Starts hosting a board game (of `rounds`, or the standard length), a saved board game, or
+/// free play, or says why it couldn't. `rules` are where the lobby's settings start.
 pub fn host_online(
     settings: &NetSettings,
     mode: PlayMode,
     rounds: Option<u32>,
     rules: RunConfig,
+    resume: Option<&Save>,
 ) -> Result<Online, Notice> {
     let port = settings.port;
-    let mut lobby = Lobby::new(mode, rules).state;
-    lobby.rounds = rounds.unwrap_or(lobby.rounds).max(1);
+    let mut lobby = Lobby::new(mode, rules, resume).state;
+    if resume.is_none() {
+        lobby.rounds = rounds.unwrap_or(lobby.rounds).max(1);
+    }
     Online::host(port, lobby, settings).map_err(|e| {
         Notice(tr!(
             "notice-host-failed",
@@ -398,69 +429,83 @@ fn title_menu(
     mut mode: ResMut<PlayMode>,
     settings: Res<NetSettings>,
     rules: Res<RunRules>,
+    slot: Res<SaveSlot>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
     mut exit: MessageWriter<AppExit>,
     sfx: Sfx,
 ) {
     let any = nav.any();
-    menu.selected = step(menu.selected, menu.items().len(), any.up, any.down);
+    let keys = menu.items();
+    menu.selected = step(menu.selected, keys.len(), any.up, any.down);
     if any.up || any.down {
         sfx.play(Sound::Move);
     }
     if any.back && menu.online {
         sfx.play(Sound::Back);
-        *menu = TitleMenu {
-            selected: 2,
-            online: false,
-        };
+        menu.open(false, "title-online");
     } else if any.confirm || any.start {
         sfx.play(Sound::Confirm);
-        let mut host = |play: PlayMode| {
+        let mut fail = |notice: Notice| {
+            commands.insert_resource(notice);
+            // Re-enter the title to show it.
+            next_state.set(AppState::Title);
+        };
+        let resume = match keys[menu.selected] {
+            "title-continue" | "title-host-saved" => match slot.load() {
+                Ok(save) => Some(save),
+                Err(notice) => return fail(notice),
+            },
+            _ => None,
+        };
+        let mut host = |play: PlayMode, resume: Option<Save>| {
             *mode = play;
-            match host_online(&settings, play, None, rules.0) {
+            match host_online(&settings, play, None, rules.0, resume.as_ref()) {
                 Ok(online) => {
                     commands.insert_resource(online);
+                    if let Some(save) = resume {
+                        commands.insert_resource(Resumed(save));
+                    }
                     next_state.set(AppState::Join);
                 }
                 Err(notice) => {
                     commands.insert_resource(notice);
-                    // Re-enter the title to show it.
                     next_state.set(AppState::Title);
                 }
             }
         };
-        match (menu.online, menu.selected) {
-            (false, 0) => {
+        match keys[menu.selected] {
+            "title-continue" => {
+                *mode = PlayMode::Board;
+                commands.insert_resource(Resumed(resume.expect("loaded above")));
+                next_state.set(AppState::Join);
+            }
+            "title-board" => {
                 *mode = PlayMode::Board;
                 next_state.set(AppState::Join);
             }
-            (false, 1) => {
+            "title-free-play" => {
                 *mode = PlayMode::FreePlay;
                 next_state.set(AppState::Join);
             }
-            (false, 2) => {
-                *menu = TitleMenu {
-                    selected: 0,
-                    online: true,
-                }
-            }
-            (false, _) => {
+            "title-online" => menu.open(true, "title-host-board"),
+            "title-quit" => {
                 exit.write(AppExit::Success);
             }
-            (true, 0) => host(PlayMode::Board),
-            (true, 1) => host(PlayMode::FreePlay),
-            (true, 2) => next_state.set(AppState::Connect),
-            (true, _) => {
-                *menu = TitleMenu {
-                    selected: 2,
-                    online: false,
-                }
-            }
+            "title-host-board" => host(PlayMode::Board, None),
+            "title-host-saved" => host(PlayMode::Board, resume),
+            "title-host-free-play" => host(PlayMode::FreePlay, None),
+            "title-join" => next_state.set(AppState::Connect),
+            _ => menu.open(false, "title-online"),
         }
     }
+    let keys = menu.items();
     for (item, mut text, mut color) in &mut items {
-        let label = tr!(menu.items()[item.0]);
+        let Some(key) = keys.get(item.0) else {
+            text.0.clear();
+            continue;
+        };
+        let label = tr!(key);
         let selected = item.0 == menu.selected;
         text.0 = if selected {
             format!("> {label} <")
@@ -487,13 +532,18 @@ pub struct Lobby {
 }
 
 impl Lobby {
-    fn new(mode: PlayMode, rules: RunConfig) -> Self {
-        let mut state = LobbyState::new(
-            Character::ALL.len() as u8,
-            Rules::default().rounds,
-            mode == PlayMode::FreePlay,
-        );
-        state.pause_on_controller_lost = rules.pause_on_controller_lost;
+    /// A fresh lobby, or one for picking `resume` up again (with its own settings).
+    fn new(mode: PlayMode, rules: RunConfig, resume: Option<&Save>) -> Self {
+        let characters = Character::ALL.len() as u8;
+        let state = match resume {
+            Some(save) => LobbyState::resuming(characters, save),
+            None => {
+                let free_play = mode == PlayMode::FreePlay;
+                let mut state = LobbyState::new(characters, Rules::default().rounds, free_play);
+                state.pause_on_controller_lost = rules.pause_on_controller_lost;
+                state
+            }
+        };
         Self {
             state,
             devices: Vec::new(),
@@ -546,6 +596,7 @@ impl Lobby {
 
 #[derive(Component)]
 enum LobbyText {
+    Hint,
     Slot(Seat),
     Status,
     Settings,
@@ -559,11 +610,13 @@ fn spawn_join(
     existing: Option<Res<Lobby>>,
     online: Option<Res<Online>>,
     rules: Res<RunRules>,
+    resumed: Option<Res<Resumed>>,
 ) {
     // Coming back from the free-play picker keeps everyone joined; the title starts afresh.
+    let resume = resumed.as_ref().map(|r| &r.0);
     let mut lobby = existing
         .map(|l| l.clone())
-        .unwrap_or_else(|| Lobby::new(*mode, rules.0));
+        .unwrap_or_else(|| Lobby::new(*mode, rules.0, resume));
     if let Some(state) = online.as_ref().and_then(|o| o.lobby()) {
         lobby.state = state.clone();
     }
@@ -579,7 +632,7 @@ fn spawn_join(
     let column = text_column(&mut commands, AppState::Join, 40.0);
     commands.entity(column).with_children(|column| {
         column.spawn(line(tr!("join-title"), 52.0, CREAM));
-        column.spawn(line(tr!("join-hint"), 20.0, DIM));
+        column.spawn((LobbyText::Hint, line("", 20.0, DIM)));
         column.spawn((LobbyText::Status, line("", 18.0, DIM)));
     });
     commands
@@ -624,6 +677,7 @@ fn join_lobby(
     mut lobby: ResMut<Lobby>,
     mut online: Option<ResMut<Online>>,
     started: Option<Res<OnlineStart>>,
+    resumed: Option<Res<Resumed>>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
     sfx: Sfx,
@@ -726,13 +780,25 @@ fn join_lobby(
                 rounds: lobby.state.rounds,
                 ..Rules::default()
             };
-            let game = Game::new(
-                Board::meadow(),
-                rules,
-                MAX_PLAYERS,
-                seed,
-                &minigames::shown_entries(),
-            );
+            let game = match resumed {
+                Some(resumed) => {
+                    let game = resumed.0.game.clone();
+                    let sum = sim_core::checksum(&game);
+                    info!(
+                        "resumed the saved game in round {}, checksum {sum:016x}",
+                        game.round()
+                    );
+                    commands.remove_resource::<Resumed>();
+                    game
+                }
+                None => Game::new(
+                    Board::meadow(),
+                    rules,
+                    MAX_PLAYERS,
+                    seed,
+                    &minigames::shown_entries(),
+                ),
+            };
             if let Some(Online::Host(session)) = online.as_deref() {
                 session.share_game(&game);
             }
@@ -903,8 +969,11 @@ fn show_lobby(
     if status.is_none() || lobby.is_added() {
         *status = Some(online_status(online.as_deref(), settings.port));
     }
+    let resume = lobby.state.resume.as_ref();
     for (label, mut text) in &mut texts {
         text.0 = match label {
+            LobbyText::Hint if resume.is_some() => tr!("join-hint-resume"),
+            LobbyText::Hint => tr!("join-hint"),
             LobbyText::Slot(seat) => match lobby.state.seats[seat.index()] {
                 Some(claim) => {
                     let how = if claim.peer != me {
@@ -919,11 +988,26 @@ fn show_lobby(
                     let character = Character::ALL[claim.character as usize];
                     format!("{}  ({how})\n< {} >", seat_label(*seat), character.name())
                 }
-                None => format!(
-                    "{}\n{}",
-                    seat_label(*seat),
-                    tr!("join-press-a", difficulty = difficulty.clone())
-                ),
+                None => match resume {
+                    Some(resume) if !resume.players.is_active(*seat) => {
+                        format!("{}\n{}", seat_label(*seat), tr!("join-not-in-game"))
+                    }
+                    // The seat keeps its character: say whose it is.
+                    Some(resume) => {
+                        let character = Character::ALL[resume.characters[seat.index()] as usize];
+                        format!(
+                            "{}  {}\n{}",
+                            seat_label(*seat),
+                            character.name(),
+                            tr!("join-press-a", difficulty = difficulty.clone())
+                        )
+                    }
+                    None => format!(
+                        "{}\n{}",
+                        seat_label(*seat),
+                        tr!("join-press-a", difficulty = difficulty.clone())
+                    ),
+                },
             },
             LobbyText::Status => status.clone().unwrap_or_default(),
             LobbyText::Settings => {
@@ -948,11 +1032,28 @@ fn show_lobby(
                             pause = pause.clone()
                         )
                     };
+                    let settings = match resume {
+                        Some(resume) => tr!(
+                            "join-host-settings-resume",
+                            round = resume.round,
+                            rounds = lobby.state.rounds,
+                            difficulty = difficulty.clone(),
+                            pause = pause.clone()
+                        ),
+                        None => settings,
+                    };
                     format!("{settings}\n{}", tr!("join-waiting-host"))
                 } else {
-                    let rounds = match *mode {
-                        PlayMode::Board => tr!("join-rounds", rounds = lobby.state.rounds),
-                        PlayMode::FreePlay => String::new(),
+                    let rounds = match (*mode, resume) {
+                        (PlayMode::Board, Some(resume)) => tr!(
+                            "join-resume-round",
+                            round = resume.round,
+                            rounds = lobby.state.rounds
+                        ),
+                        (PlayMode::Board, None) => {
+                            tr!("join-rounds", rounds = lobby.state.rounds)
+                        }
+                        (PlayMode::FreePlay, _) => String::new(),
                     };
                     let start = if lobby.state.peer_joined(me) {
                         tr!("join-start")
@@ -1506,7 +1607,7 @@ mod tests {
 
     #[test]
     fn devices_keep_their_seats_and_characters() {
-        let mut lobby = Lobby::new(PlayMode::Board, RunConfig::default());
+        let mut lobby = Lobby::new(PlayMode::Board, RunConfig::default(), None);
         let pad = Device::Pad(Entity::PLACEHOLDER);
         join(&mut lobby, pad);
         join(&mut lobby, Device::Keyboard);
@@ -1530,7 +1631,7 @@ mod tests {
 
     #[test]
     fn unjoined_seats_become_bots() {
-        let mut lobby = Lobby::new(PlayMode::Board, RunConfig::default());
+        let mut lobby = Lobby::new(PlayMode::Board, RunConfig::default(), None);
         lobby.state.bots = Difficulty::Hard;
         join(&mut lobby, Device::Keyboard);
         let seats = lobby.seats(PeerId::HOST);

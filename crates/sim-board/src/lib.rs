@@ -9,6 +9,7 @@ pub mod board;
 pub mod bot;
 pub mod game;
 pub mod headless;
+pub mod save;
 #[cfg(test)]
 mod testing;
 
@@ -19,3 +20,4 @@ pub use game::{
     Rules,
 };
 pub use headless::{PlayedMinigame, Summary, play_bots};
+pub use save::{LoadError, SAVE_VERSION, Save, SavedSeat};

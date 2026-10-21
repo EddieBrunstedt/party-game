@@ -4,7 +4,8 @@
 //! show what it sends back.
 
 use serde::{Deserialize, Serialize};
-use sim_core::{Difficulty, MAX_PLAYERS, RunConfig, Seat};
+use sim_board::Save;
+use sim_core::{Difficulty, MAX_PLAYERS, PlayerSetup, RunConfig, Seat};
 
 /// A machine in the session. The host is always 0; the host numbers the others as they join.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -46,6 +47,19 @@ pub enum LobbyAction {
     TogglePauseOnControllerLost,
 }
 
+/// A saved game being picked up again: every seat keeps its character, and players choose
+/// which of the saved seats to take (left/right moves between them).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Resume {
+    pub characters: [u8; MAX_PLAYERS],
+    /// Seats people played. Joining offers these first.
+    pub humans: [bool; MAX_PLAYERS],
+    /// The seats in the game; the others can't be taken.
+    pub players: PlayerSetup,
+    /// The round the game was saved in.
+    pub round: u32,
+}
+
 /// Board lengths the join screen offers.
 pub const ROUND_CHOICES: [u32; 5] = [6, 9, 12, 15, 20];
 
@@ -61,6 +75,8 @@ pub struct LobbyState {
     pub free_play: bool,
     /// How many characters there are to pick from.
     pub characters: u8,
+    /// Picking up a saved game rather than starting one.
+    pub resume: Option<Resume>,
 }
 
 impl LobbyState {
@@ -76,7 +92,22 @@ impl LobbyState {
             pause_on_controller_lost: false,
             free_play,
             characters,
+            resume: None,
         }
+    }
+
+    /// A lobby for picking `save` up again: its seats, characters, length and settings.
+    pub fn resuming(characters: u8, save: &Save) -> Self {
+        let mut lobby = Self::new(characters, save.game.rules().rounds, false);
+        lobby.bots = save.bots;
+        lobby.pause_on_controller_lost = save.pause_on_controller_lost;
+        lobby.resume = Some(Resume {
+            characters: save.seats.map(|s| s.character),
+            humans: save.seats.map(|s| s.human),
+            players: save.game.players(),
+            round: save.game.round(),
+        });
+        lobby
     }
 
     /// The rules every machine runs this session's minigames with.
@@ -108,13 +139,22 @@ impl LobbyState {
                 if self.seat_of(peer, local).is_some() {
                     return false;
                 }
-                let Some(seat) = Seat::ALL
-                    .into_iter()
-                    .find(|s| self.seats[s.index()].is_none())
-                else {
+                let free = |s: &Seat| self.free(*s);
+                let seat = match &self.resume {
+                    // People's seats first, then the bots'.
+                    Some(resume) => (Seat::ALL.into_iter())
+                        .filter(free)
+                        .find(|s| resume.humans[s.index()])
+                        .or_else(|| Seat::ALL.into_iter().find(free)),
+                    None => Seat::ALL.into_iter().find(free),
+                };
+                let Some(seat) = seat else {
                     return false;
                 };
-                let character = self.next_character(seat, self.characters - 1, true);
+                let character = match &self.resume {
+                    Some(resume) => resume.characters[seat.index()],
+                    None => self.next_character(seat, self.characters - 1, true),
+                };
                 self.seats[seat.index()] = Some(Claim {
                     peer,
                     local,
@@ -126,6 +166,22 @@ impl LobbyState {
                 let Some(seat) = self.seat_of(peer, local) else {
                     return false;
                 };
+                if let Some(resume) = &self.resume {
+                    // The character comes with the seat: move to the next free one instead.
+                    let n = MAX_PLAYERS as u8;
+                    let to = (1..n)
+                        .map(|k| Seat(if next { seat.0 + k } else { seat.0 + n - k } % n))
+                        .find(|s| self.free(*s));
+                    let Some(to) = to else {
+                        return false;
+                    };
+                    let claim = self.seats[seat.index()].take().expect("seat_of found it");
+                    self.seats[to.index()] = Some(Claim {
+                        character: resume.characters[to.index()],
+                        ..claim
+                    });
+                    return true;
+                }
                 let from = self.seats[seat.index()]
                     .expect("seat_of found it")
                     .character;
@@ -151,7 +207,9 @@ impl LobbyState {
                 };
                 true
             }
-            LobbyAction::Rounds { longer } if peer == PeerId::HOST && !self.free_play => {
+            LobbyAction::Rounds { longer }
+                if peer == PeerId::HOST && !self.free_play && self.resume.is_none() =>
+            {
                 let len = ROUND_CHOICES.len();
                 let at = ROUND_CHOICES
                     .iter()
@@ -197,8 +255,21 @@ impl LobbyState {
         }
     }
 
-    /// Characters per seat: players keep theirs, bots take whoever is left, in order.
+    /// Whether a controller can sit here: nobody has it, and (resuming) the seat is in the game.
+    fn free(&self, seat: Seat) -> bool {
+        let in_game = self
+            .resume
+            .as_ref()
+            .is_none_or(|r| r.players.is_active(seat));
+        self.seats[seat.index()].is_none() && in_game
+    }
+
+    /// Characters per seat: players keep theirs, bots take whoever is left, in order. A resumed
+    /// game's seats keep the characters they had.
     pub fn roster(&self) -> [u8; MAX_PLAYERS] {
+        if let Some(resume) = &self.resume {
+            return resume.characters;
+        }
         let mut free = (0..self.characters)
             .filter(|c| !self.seats.iter().flatten().any(|s| s.character == *c));
         Seat::ALL.map(|seat| match self.seats[seat.index()] {
@@ -333,6 +404,102 @@ mod tests {
         assert!(lobby.apply(ME, LobbyAction::Rounds { longer: false }));
         assert!(lobby.apply(ME, LobbyAction::Rounds { longer: false }));
         assert_eq!(lobby.rounds, 9);
+    }
+
+    fn resumed(players: usize) -> LobbyState {
+        let mut game = sim_board::Game::new(
+            sim_board::Board::meadow(),
+            sim_board::Rules {
+                rounds: 9,
+                ..Default::default()
+            },
+            players,
+            3,
+            &[sim_core::MinigameEntry::of::<Fake>()],
+        );
+        while let sim_board::Awaiting::Intent { seat, .. } = game.awaiting() {
+            if game.between_turns() {
+                break;
+            }
+            game.apply(seat, sim_board::Intent::Roll).unwrap();
+        }
+        let save = Save {
+            game,
+            // People played seats 1 and 3.
+            seats: [2, 0, 3, 1].map(|character| sim_board::SavedSeat {
+                character,
+                human: character % 3 == 0,
+            }),
+            bots: Difficulty::Hard,
+            pause_on_controller_lost: true,
+        };
+        LobbyState::resuming(4, &save)
+    }
+
+    #[test]
+    fn resuming_offers_the_saved_seats_with_their_characters() {
+        let mut lobby = resumed(4);
+        assert_eq!(lobby.rounds, 9);
+        assert_eq!(lobby.bots, Difficulty::Hard);
+        assert!(lobby.pause_on_controller_lost);
+        assert_eq!(lobby.roster(), [2, 0, 3, 1]);
+        // People's seats first (1 and 2), then the bots'.
+        for local in 0..3 {
+            lobby.apply(ME, LobbyAction::Join { local });
+        }
+        assert_eq!(lobby.seat_of(ME, 0), Some(Seat(1)));
+        assert_eq!(lobby.seat_of(ME, 1), Some(Seat(2)));
+        assert_eq!(lobby.seat_of(ME, 2), Some(Seat(0)));
+        assert_eq!(lobby.seats[2].unwrap().character, 3);
+        // Left/right moves to the next free seat, and the character comes with it.
+        assert!(lobby.apply(
+            ME,
+            LobbyAction::Pick {
+                local: 1,
+                next: true
+            }
+        ));
+        assert_eq!(lobby.seat_of(ME, 1), Some(Seat(3)));
+        assert_eq!(lobby.seats[3].unwrap().character, 1);
+        assert_eq!(lobby.seats[2], None);
+        assert!(!lobby.apply(ME, LobbyAction::Rounds { longer: true }));
+        assert_eq!(lobby.rounds, 9);
+        assert_eq!(lobby.roster(), [2, 0, 3, 1]);
+    }
+
+    #[test]
+    fn resuming_a_smaller_game_keeps_its_empty_seats_empty() {
+        let mut lobby = resumed(2);
+        for local in 0..4 {
+            lobby.apply(ME, LobbyAction::Join { local });
+        }
+        assert_eq!(lobby.seats.iter().flatten().count(), 2);
+        assert!(!lobby.apply(
+            ME,
+            LobbyAction::Pick {
+                local: 0,
+                next: true
+            }
+        ));
+    }
+
+    /// The smallest minigame a board can be made with.
+    struct Fake;
+
+    impl sim_core::Minigame for Fake {
+        type State = ();
+        const ID: &'static str = "fake";
+        const SUPPORTED_FORMATS: &'static [sim_core::FormatKind] =
+            &[sim_core::FormatKind::FreeForAll];
+        const MAX_TICKS: u32 = 1;
+        fn new(_: u64, _: PlayerSetup, _: sim_core::Format) {}
+        fn step(_: &mut (), _: &sim_core::Inputs) {}
+        fn outcome(_: &()) -> Option<sim_core::Outcome> {
+            None
+        }
+        fn bot_input(_: &(), _: Seat, _: Difficulty) -> sim_core::Input {
+            sim_core::Input::default()
+        }
     }
 
     #[test]

@@ -16,6 +16,7 @@ mod perf;
 mod quality;
 mod quick_draw;
 mod runner;
+mod save;
 mod scenery;
 mod sfx;
 
@@ -102,6 +103,13 @@ struct Cli {
     /// without it.
     #[arg(long, value_name = "SECS", default_value_t = online::WAIT_OPTIONS_SECS)]
     wait_options_after: f32,
+    /// The saved board game's file (default: `party-game/board.save` in the user's data folder).
+    /// `--board` only saves when this is given.
+    #[arg(long, value_name = "FILE")]
+    save: Option<PathBuf>,
+    /// Skip the title and pick up the saved board game (with `--host`, host it).
+    #[arg(long)]
+    resume: bool,
     /// Write every sound effect to this directory as WAVs, then exit.
     #[arg(long, value_name = "DIR")]
     dump_sfx: Option<PathBuf>,
@@ -239,6 +247,12 @@ fn main() {
     .insert_resource(Seats(seats))
     .insert_resource(runner::RunRules(setup.config))
     .insert_resource(net_settings)
+    .insert_resource(save::SaveSlot(match (&cli.save, cli.board) {
+        (Some(path), _) => Some(path.clone()),
+        // A dev shortcut shouldn't overwrite the real save.
+        (None, true) => None,
+        (None, false) => save::SaveSlot::default_path(),
+    }))
     .init_resource::<characters::Roster>()
     .add_plugins((
         perf::PerfOverlayPlugin {
@@ -258,7 +272,15 @@ fn main() {
         menus::MenusPlugin,
         online::OnlinePlugin,
         particles::ParticlesPlugin,
+        save::SavePlugin,
     ));
+    let resume = cli.resume.then(|| {
+        let slot = app.world().resource::<save::SaveSlot>();
+        slot.load().unwrap_or_else(|notice| {
+            eprintln!("{}", notice.0);
+            std::process::exit(1);
+        })
+    });
     match &cli.minigame {
         Some(id) => {
             let Some(entry) = minigame_registry::find(id) else {
@@ -290,17 +312,26 @@ fn main() {
         }
         None if cli.host => {
             let (mode, rounds) = (menus::PlayMode::Board, cli.rounds);
-            match menus::host_online(&net_settings, mode, rounds, setup.config) {
+            match menus::host_online(&net_settings, mode, rounds, setup.config, resume.as_ref()) {
                 Ok(online) => {
                     app.insert_resource(Seats([None; 4]))
                         .insert_resource(online)
                         .insert_state(AppState::Join);
+                    if let Some(save) = resume {
+                        app.insert_resource(save::Resumed(save));
+                    }
                 }
                 Err(notice) => {
                     eprintln!("{}", notice.0);
                     std::process::exit(1);
                 }
             }
+        }
+        None if resume.is_some() => {
+            app.insert_resource(Seats([None; 4]))
+                .insert_resource(save::Resumed(resume.expect("checked")))
+                .insert_resource(menus::PlayMode::Board)
+                .insert_state(AppState::Join);
         }
         None if cli.join.is_some() => {
             let address = cli.join.clone().unwrap_or_default();

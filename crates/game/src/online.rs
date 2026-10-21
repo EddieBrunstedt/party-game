@@ -13,9 +13,11 @@ use net::{Clock, Endpoint, EndpointConfig, Faults, Faulty, Transport, UdpTranspo
 use sim_board::{Event, Game, Intent, Rejected};
 use sim_core::{Button, MAX_PLAYERS, Outcome, Seat};
 
+use crate::board_view::BoardSession;
 use crate::flow::{AppState, MinigameLaunch, Origin};
 use crate::i18n::names;
 use crate::runner::{Controller, RunRules, RunSetup, SeatInputs, Seats};
+use crate::save::SaveSlot;
 use crate::tr;
 
 /// Picked at runtime, so `--net-delay` can wrap UDP in fault injection.
@@ -268,6 +270,8 @@ fn decide_about_the_absent(
     inputs: Res<SeatInputs>,
     mut seats: ResMut<Seats>,
     time: Res<Time>,
+    board: Option<Res<BoardSession>>,
+    slot: Res<SaveSlot>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
@@ -299,7 +303,14 @@ fn decide_about_the_absent(
         }
     } else if pressed(Button::B) {
         info!("the host ended the game");
-        commands.insert_resource(Notice(tr!("notice-ended")));
+        // A board game was saved at its last turn.
+        let saved = board.is_some() && slot.exists();
+        let notice = if saved {
+            "notice-ended-saved"
+        } else {
+            "notice-ended"
+        };
+        commands.insert_resource(Notice(tr!(notice)));
         next_state.set(AppState::Title);
     }
 }

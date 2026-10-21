@@ -359,6 +359,43 @@ impl Game {
         &self.phase
     }
 
+    /// Between turns: a turn is about to start, or the round's minigame is. The only moments a
+    /// game is saved.
+    pub fn between_turns(&self) -> bool {
+        matches!(self.phase, Phase::Roll | Phase::Minigame(_))
+    }
+
+    /// The ids of the minigames this game picks from.
+    pub fn minigame_ids(&self) -> impl Iterator<Item = &str> {
+        self.minigames.iter().map(|m| m.id.as_str())
+    }
+
+    /// Checks what deserializing can't (the board checks itself): every index points somewhere,
+    /// so a damaged save is refused instead of panicking later.
+    pub(crate) fn check(&self) -> Result<(), String> {
+        let spaces = self.board.spaces().len();
+        let on_board = |id: SpaceId| id.index() < spaces;
+        let players: Vec<Seat> = self.players.seats().collect();
+        if !(2..=MAX_PLAYERS).contains(&players.len()) {
+            return Err("not 2-4 players".into());
+        }
+        if !players.iter().all(|s| on_board(self.player(*s).space)) || !on_board(self.star) {
+            return Err("a piece is off the board".into());
+        }
+        if self.minigames.is_empty() || self.rules.rounds == 0 || self.round > self.rules.rounds {
+            return Err("impossible rules or round".into());
+        }
+        let mut order = self.order.clone();
+        order.sort();
+        let ordered = order == players && (self.turn as usize) < self.order.len();
+        match self.phase {
+            Phase::TurnOrder { .. } if self.order.is_empty() => Ok(()),
+            Phase::GameOver { .. } | Phase::Minigame(_) if order == players => Ok(()),
+            Phase::Roll | Phase::Fork { .. } | Phase::StarOffer { .. } if ordered => Ok(()),
+            _ => Err("the turn order doesn't match the players".into()),
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn set_star(&mut self, star: SpaceId) {
         self.star = star;

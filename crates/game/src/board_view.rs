@@ -109,6 +109,8 @@ pub struct BoardSession {
     launched: Option<u64>,
     /// Online host: clients' decisions that arrived while the board waited for a machine.
     held: VecDeque<(Seat, Intent)>,
+    /// The game moved on since [`BoardSession::take_changed`] last looked (for saving).
+    changed: bool,
 }
 
 impl BoardSession {
@@ -140,14 +142,22 @@ impl BoardSession {
             sent: false,
             launched: None,
             held: VecDeque::new(),
+            changed: false,
         }
+    }
+
+    /// Whether the game moved on since the last call.
+    pub fn take_changed(&mut self) -> bool {
+        std::mem::take(&mut self.changed)
     }
 
     fn idle(&self) -> bool {
         self.playing.is_none() && self.queue.is_empty()
     }
 
+    /// Every change to the game comes with its events, through here.
     fn push(&mut self, events: Vec<Event>) {
+        self.changed = true;
         self.queue.extend(events);
         self.ready_since = None;
     }
@@ -448,7 +458,11 @@ fn sync_online_board(
         }
     }
     if let Some(fresh) = fresh {
-        info!("joined the host's board at round {}", fresh.game.round());
+        let sum = sim_core::checksum(&fresh.game);
+        info!(
+            "joined the host's board at round {}, checksum {sum:016x}",
+            fresh.game.round()
+        );
         commands.insert_resource(fresh);
         if *state.get() != AppState::Board {
             next_state.set(AppState::Board);

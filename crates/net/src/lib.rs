@@ -33,7 +33,7 @@ pub use udp::UdpTransport;
 
 /// Bumped by hand whenever the wire format changes (frames here, or board protocol messages).
 /// Peers with a different protocol or game version refuse each other at the handshake.
-pub const PROTOCOL_VERSION: u32 = 6;
+pub const PROTOCOL_VERSION: u32 = 7;
 
 /// Moves whole datagrams between addresses, with no promises: they may be lost, duplicated,
 /// delayed or reordered. Everything reliable is built on top, in [`Endpoint`].
