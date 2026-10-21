@@ -13,6 +13,7 @@ Read `docs/DESIGN.md` before designing anything. Read the matching ADR in `docs/
 - **Simulation crates stay Bevy-free.** `sim-*` and `minigames/*` are plain Rust, and Bevy only reads their state (ADR 0001). Simulation code is deterministic: a seeded `Rng` inside the state, `sim_core::math` for transcendental functions, ordered collections only, no wall clock.
 - **Every minigame passes `sim_check::check_all`,** run as a unit test in its crate. A minigame without that test isn't done.
 - **Bots are virtual controllers:** `bot_input` is a pure function of state, seat and difficulty that returns an `Input`.
+- **No CI until release.** It used up the GitLab compute quota, so don't add `.gitlab-ci.yml` back. Before committing, run `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings` locally.
 - **The game's name lives only in `GAME_TITLE`** (`crates/game/src/main.rs`). Crates and identifiers use generic names.
 
 ## Gotchas

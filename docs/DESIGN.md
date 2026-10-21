@@ -194,7 +194,7 @@ A minigame is **done** when it passes all three:
 2. **Headless bot run:** 4 bots finish the game with no panics.
 3. **Manual feel check:** the developer plays it.
 
-(1) and (2) are one call, `sim_check::check_all::<M>(seeds)`. Online, `cargo run -p tools -- net-check <minigame>` plays bot matches across 2–4 machines over localhost UDP with simulated lag and loss, and every machine must agree on every confirmed tick and on the outcome; `net`'s tests run a smaller version in CI. Every minigame crate runs it as a unit test, and `cargo run -p tools -- check <minigame>` runs it from the CLI. They will also run in CI on GitLab.
+(1) and (2) are one call, `sim_check::check_all::<M>(seeds)`. Online, `cargo run -p tools -- net-check <minigame>` plays bot matches across 2–4 machines over localhost UDP with simulated lag and loss, and every machine must agree on every confirmed tick and on the outcome; `net`'s tests run a smaller version. Every minigame crate runs it as a unit test, and `cargo run -p tools -- check <minigame>` runs it from the CLI. There is no CI until release (it used up the GitLab compute quota); run `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings` locally before committing.
 
 ## 6. Milestones
 
