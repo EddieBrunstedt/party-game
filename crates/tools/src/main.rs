@@ -11,6 +11,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use minigame_firefly_catch::FireflyCatch;
 use minigame_lantern_echo::LanternEcho;
 use minigame_lantern_push::LanternPush;
+use minigame_lantern_tower::LanternTower;
 use minigame_quick_draw::QuickDraw;
 use net::check::{OnlineMatch, OnlineReport};
 use net::{Faults, UdpTransport};
@@ -150,6 +151,7 @@ fn checker(id: &str) -> Option<fn(u64) -> Result<(), String>> {
         LanternPush::ID => Some(sim_check::check_all::<LanternPush>),
         FireflyCatch::ID => Some(sim_check::check_all::<FireflyCatch>),
         LanternEcho::ID => Some(sim_check::check_all::<LanternEcho>),
+        LanternTower::ID => Some(sim_check::check_all::<LanternTower>),
         _ => None,
     }
 }
@@ -164,6 +166,7 @@ fn net_checker(id: &str) -> Option<NetChecker> {
         LanternPush::ID => Some(play_over_udp::<LanternPush>),
         FireflyCatch::ID => Some(play_over_udp::<FireflyCatch>),
         LanternEcho::ID => Some(play_over_udp::<LanternEcho>),
+        LanternTower::ID => Some(play_over_udp::<LanternTower>),
         _ => None,
     }
 }
@@ -223,6 +226,7 @@ fn checker_setups(id: &str, seed: u64) -> Vec<sim_check::Setup> {
         LanternPush::ID => sim_check::setups::<LanternPush>(seed),
         FireflyCatch::ID => sim_check::setups::<FireflyCatch>(seed),
         LanternEcho::ID => sim_check::setups::<LanternEcho>(seed),
+        LanternTower::ID => sim_check::setups::<LanternTower>(seed),
         _ => Vec::new(),
     }
 }

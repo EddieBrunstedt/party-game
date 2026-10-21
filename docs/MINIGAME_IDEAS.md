@@ -28,7 +28,7 @@ In his words first, then a note on how each might fit.
 
 > "remember that game on your phone 20 years ago were you made a tower one piece at a time. Yeah that. But here you can somehow sabotage your friends"
 
-- A block slides back and forth and you press A to drop it; whatever overhangs is cut off, and the tower gets narrower. Everyone builds side by side. The twist: a way to sabotage the others (speed up their slider, wobble their tower, steal a piece). Timing-based, easy to read, good for bots.
+- **Taken: Lantern Tower** (see ROADMAP.md). A block slides back and forth and you press A to drop it; whatever overhangs is cut off, and the tower gets narrower. Everyone builds side by side. The twist: a way to sabotage the others (speed up their slider, wobble their tower, steal a piece). Timing-based, easy to read, good for bots.
 
 ### Puzzles
 

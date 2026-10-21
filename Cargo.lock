@@ -3014,6 +3014,7 @@ dependencies = [
  "minigame-firefly-catch",
  "minigame-lantern-echo",
  "minigame-lantern-push",
+ "minigame-lantern-tower",
  "minigame-quick-draw",
  "minigame-registry",
  "net",
@@ -3991,6 +3992,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "minigame-lantern-tower"
+version = "0.1.0"
+dependencies = [
+ "sim-check",
+ "sim-core",
+]
+
+[[package]]
 name = "minigame-quick-draw"
 version = "0.1.0"
 dependencies = [
@@ -4005,6 +4014,7 @@ dependencies = [
  "minigame-firefly-catch",
  "minigame-lantern-echo",
  "minigame-lantern-push",
+ "minigame-lantern-tower",
  "minigame-quick-draw",
  "sim-board",
  "sim-core",
@@ -5817,6 +5827,7 @@ dependencies = [
  "minigame-firefly-catch",
  "minigame-lantern-echo",
  "minigame-lantern-push",
+ "minigame-lantern-tower",
  "minigame-quick-draw",
  "minigame-registry",
  "net",

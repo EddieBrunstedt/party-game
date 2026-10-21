@@ -4,9 +4,8 @@ Briefing for the next session. Earlier sessions' notes are in git history (`git 
 
 ## Done this session
 
-- Lantern Echo (memory race, all four formats) built to playable and ticked; details and the playtest command are under its item in `docs/ROADMAP.md`. `tools bots` gained `--format` and `--p1 <level>` for format and mixed-difficulty reports. The d-pad now feeds a seat's stick.
-- Item 7 (network disconnects and reconnect) committed after a full `cargo test --workspace` (`f637e07`).
-- Item 8 (save and resume) built, checked and ticked. Details, evidence and gaps are under item 8 in `docs/ROADMAP.md`; `docs/DESIGN.md` §3.4 and §4.4 are updated. `PROTOCOL_VERSION` 7, `SAVE_VERSION` 1.
+- Lantern Tower (stacking race with sabotage, all four formats) built to playable and ticked; rules, decisions, the bots report and the playtest command are under its item in `docs/ROADMAP.md`. The developer chose the sabotage (a gust that speeds up rivals' blocks) and that a miss knocks the top floor off. The developer's playtest found the outer towers harder to judge; the camera is now orthographic, and it's committed.
+- Earlier the same day: Lantern Echo, network reconnects (item 7) and save and resume (item 8); see `git log`.
 
 ## How to test saves
 
@@ -32,11 +31,16 @@ Briefing for the next session. Earlier sessions' notes are in git history (`git 
 - A resumed game's seats keep their characters; players pick which seat with left/right.
 - Rejoining after a disconnect is by position, not identity (item 7).
 
+## Lantern Tower's camera (fixed, waiting on a playtest)
+
+Playtest 1 found the middle towers easier to line up (the perspective camera saw the outer ones from the side). The view now uses an orthographic camera; see the Lantern Tower item in `docs/ROADMAP.md`. Lantern Tower is committed. If the developer's next playtest still finds a seat harder, the drop guides (thin light lines up from the top floor's edges) are the next thing to try.
+
 ## Next: add minigames
 
 The developer wants to build minigames for a while, and leaves the choice of which to the session. "Let's add some minigames" or "continue" both mean: take the **Next minigame** item in `docs/ROADMAP.md` (Milestone 3, Minigames). The steps for adding one and what to prefer are written there; the ideas are in `docs/MINIGAME_IDEAS.md`.
 
 - Milestone 2 is done apart from the online playtest, which is **deferred** (not a checkbox, so "continue" skips it). Don't start it unless the developer asks.
 - Firefly Catch is on hold: don't tune it.
+- Tuning a minigame for close matches: race every player to the finish (ignore the outcome) in a throwaway test and compare the runner-up's finishing time with the winner's; it's finer than counting steps or floors. Check per-seat wins too: Lantern Tower's bots once had a seat bias from all gusting the same tower on the same tick.
 - Every new minigame must also pass `tools net-check <id>`, since the game plays online now.
 - Possible later follow-ups (not roadmap items yet): a pause menu on the board (back to the title), more save slots.

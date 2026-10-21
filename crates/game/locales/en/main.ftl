@@ -133,6 +133,7 @@ minigame-quick-draw = Quick Draw
 minigame-lantern-push = Lantern Push
 minigame-firefly-catch = Firefly Catch
 minigame-lantern-echo = Lantern Echo
+minigame-lantern-tower = Lantern Tower
 
 ## Quick Draw
 quick-draw-title = QUICK DRAW
@@ -194,6 +195,22 @@ lantern-echo-right = right!
 lantern-echo-slip = WRONG
 lantern-echo-done = done!
 lantern-echo-team = { $players }  { $steps }/{ $needed }
+
+## Lantern Tower
+lantern-tower-title = LANTERN TOWER
+lantern-tower-how = A block slides over your tower: drop it right on top. Whatever hangs over the edge is cut off, and a block that misses knocks your top floor off. 3 perfect drops charge a gust: blow it to make the tallest rival's blocks slide faster.
+lantern-tower-a = drop the block
+lantern-tower-b = blow a gust (after 3 perfect drops)
+lantern-tower-goal = First to 20 floors wins!
+lantern-tower-goal-teams = Your team shares a tower and takes turns. First to 20 floors wins!
+lantern-tower-goal-solo = { $player } builds alone; the other three share a tower and take turns. First to 20 floors!
+lantern-tower-go = BUILD!
+lantern-tower-gust = Gust on { $players }!
+lantern-tower-floors = { $floors }/{ $goal } floors
+lantern-tower-charge = gust { $charge }/{ $needed }
+lantern-tower-gust-ready = GUST READY: B!
+lantern-tower-gusted = gusted!
+lantern-tower-your-turn = your turn
 
 ## Board
 board-turn-order = Turn order

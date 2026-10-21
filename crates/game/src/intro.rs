@@ -374,6 +374,27 @@ mod tests {
     }
 
     #[test]
+    fn lantern_tower_goals_match_the_rules() {
+        use minigame_lantern_tower::{GOAL_FLOORS, GUST_CHARGE};
+        let floors = format!("{GOAL_FLOORS} floors");
+        for format in [
+            Format::FreeForAll,
+            Format::OneVsThree { solo: Seat(0) },
+            Format::TwoVsTwo {
+                team_of: [0, 0, 1, 1],
+            },
+        ] {
+            let goal = goal("lantern-tower", &format);
+            assert!(goal.contains(&floors), "{goal}");
+        }
+        let charge = format!("{GUST_CHARGE} perfect drops");
+        for key in ["lantern-tower-how", "lantern-tower-b"] {
+            let text = tr!(key);
+            assert!(text.to_lowercase().contains(&charge), "{text}");
+        }
+    }
+
+    #[test]
     fn the_countdown_counts_three_two_one() {
         let end = COUNTDOWN_TICKS as u32;
         assert_eq!(countdown(0), Some(3));

@@ -10,6 +10,7 @@ minigame-quick-draw.workspace = true
 minigame-lantern-push.workspace = true
 minigame-firefly-catch.workspace = true
 minigame-lantern-echo.workspace = true
+minigame-lantern-tower.workspace = true
 
 [dev-dependencies]
 sim-board.workspace = true

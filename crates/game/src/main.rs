@@ -8,6 +8,7 @@ mod i18n;
 mod intro;
 mod lantern_echo;
 mod lantern_push;
+mod lantern_tower;
 mod menus;
 mod minigames;
 mod online;
