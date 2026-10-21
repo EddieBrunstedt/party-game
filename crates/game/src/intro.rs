@@ -453,6 +453,26 @@ mod tests {
     }
 
     #[test]
+    fn hedge_maze_goals_match_the_rules() {
+        use minigame_hedge_maze::{GHOST_RACE_TICKS, MAZES, TRIO_NEEDED};
+        let mazes = format!("{MAZES} mazes");
+        for format in [
+            Format::FreeForAll,
+            Format::TwoVsTwo {
+                team_of: [0, 0, 1, 1],
+            },
+        ] {
+            let goal = goal("hedge-maze", &format);
+            assert!(goal.contains(&mazes), "{goal}");
+        }
+        let solo = goal("hedge-maze", &Format::OneVsThree { solo: Seat(0) });
+        assert_eq!(TRIO_NEEDED, 2, "the card says two of you three");
+        let seconds = format!("{} seconds", GHOST_RACE_TICKS / 60);
+        assert!(solo.contains(&seconds), "{solo}");
+        assert!(solo.contains(&format!("Best of {MAZES}")), "{solo}");
+    }
+
+    #[test]
     fn the_countdown_counts_three_two_one() {
         let end = COUNTDOWN_TICKS as u32;
         assert_eq!(countdown(0), Some(3));

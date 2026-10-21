@@ -4,10 +4,14 @@ Briefing for the next session. Earlier sessions' notes are in git history (`git 
 
 ## Done this session
 
-- Musical Stools (musical chairs, all four formats) built to playable and ticked. The developer chose the points variant (one stool fewer than players, nobody sits out, a bonus for sitting first, 7 rounds), the fenced turntable while the music plays, and the 1v3 solo as the cat. Rules, decisions, the bots report and the playtest command are under its item in `docs/ROADMAP.md`.
-- The first music in the game: `audio::dance_music`, a synthesized 4.5 s waltz loop on its own channel, played through `MusicPlayer` (play, stop, set the rate). The view follows the simulation, which decides when the music plays, slows and stops.
-- `minigames.rs` now adds each minigame's runner and view as a pair: Bevy's plugin tuples stop short of 16, which the eighth minigame reached.
-- Earlier the same day: Lantern Lottery, Sky Lanterns, Lantern Tower, Lantern Echo, network reconnects and save and resume; see `git log -p docs/HANDOFF.md`.
+- Committed Musical Stools (`8bf4f10`), which the previous session left uncommitted after its tests and clippy passed.
+- **Hedge Maze** built to playable, ticked and committed. A race to a beacon through a dark maze where lit hedges stay lit for everyone, 3 mazes for points; the 1v3 solo is a ghost whose touch sends runners back to their corner. The developer chose all four rule options offered (dark with a shared reveal, 3 mazes for points, a hunting ghost, A as a once-per-maze flare). Rules, tuning, the bots report and surprises are under its item in `docs/ROADMAP.md`; DESIGN.md §3.3 has its entry.
+
+Notes for Hedge Maze, if it needs tuning after a playtest:
+- Bot tuning knobs are `bot::skill` in the crate (delay, noise, flare_dark, fear, urgency, intercepts). 1v3 balance knobs are `GHOST_SPEED`, `RESPAWN_TICKS`, `GHOST_RACE_TICKS` and `TRIO_NEEDED` (the card's text and an `intro.rs` test pin 2 and 20 s).
+- The generator's knobs are `NEWEST_PERCENT`, `MIN_PATH`, `CANDIDATES` and `LOOPS`; a test checks every corner is equally far from the beacon and the maze is the same turned a quarter.
+- An ignored probe test is the quickest way to tune: run bot matches in a loop and print a statistic.
+- The view keeps every possible hedge slot as an entity (about 480) and shows the ones that are hedges in this maze and next to a lit cell, so new mazes need no respawning.
 
 ## How to test saves
 
@@ -39,6 +43,8 @@ Briefing for the next session. Earlier sessions' notes are in git history (`git 
 - Sky Lanterns: see "Needs human playtest" under its item. The open question is whether a shooting gallery, where the better shooter wins almost every time, needs a catch-up twist.
 
 - Musical Stools: see "Needs human playtest" under its item. One rule needs the developer's OK: in 1v3 the cat's **dash catches** a runner (out for the round). The agreed version (the cat only shoves) let the three fill both stools in 0.4 s, and the cat won 0–1% of matches; with catching it wins 48–53%. If the developer doesn't like catching, the other levers that were tried (a wider fence, catching on any touch) are in the item's decisions.
+
+- Hedge Maze: see "Needs human playtest" under its item (stick feel in the corridors, whether the shared light makes following too strong, the ghost's speed and 20 s limit). Open, for the developer to decide: equal bots often tie because the maze is symmetric; a tie-break (e.g. total finishing time) would cut that, but ties share the win in every other minigame. Don't build it unless asked.
 
 ### Lantern Tower's camera (fixed)
 

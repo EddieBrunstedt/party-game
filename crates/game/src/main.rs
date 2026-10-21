@@ -4,6 +4,7 @@ mod characters;
 mod dev;
 mod firefly_catch;
 mod flow;
+mod hedge_maze;
 mod i18n;
 mod intro;
 mod lantern_echo;

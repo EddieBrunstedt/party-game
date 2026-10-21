@@ -34,7 +34,7 @@ In his words first, then a note on how each might fit.
 
 > "who goes trough a maze fastest; who guesses which picture is the right one. Who guesses which solution is the right one to a problem"
 
-- **Maze race:** everyone in the same maze (or mirrored copies), first out wins. Mazes are generated from the seed.
+- **Maze race** (taken: Hedge Maze, see ROADMAP.md, played in the dark as below)**:** everyone in the same maze (or mirrored copies), first out wins. Mazes are generated from the seed.
 - **Spot the right picture:** several pictures and one is right (the odd one out, the one matching a description, the one that changed). Pick it first. Needs picture content.
 - **Pick the right solution:** a problem with several candidate answers. Bots need a tuned chance of being right per difficulty.
 
@@ -42,7 +42,7 @@ In his words first, then a note on how each might fit.
 
 > "hide and seek, screen goes dark and someone needs to find people"
 
-- **Lights out hide and seek:** the screen goes dark, the hiders hide, then the seeker searches with a small light. A natural 1v3 (seeker against hiders). On one shared screen, everyone sees where the hiders are while the lights are on, so the dark phase has to do the hiding work: e.g. hiders move only while it's dark, and the seeker sees only what their lantern lights. Fits the lantern theme well.
+- **Lights out hide and seek** (its dark, lantern-lit half went into Hedge Maze, whose 1v3 ghost hunts the three; hide and seek itself is still open)**:** the screen goes dark, the hiders hide, then the seeker searches with a small light. A natural 1v3 (seeker against hiders). On one shared screen, everyone sees where the hiders are while the lights are on, so the dark phase has to do the hiding work: e.g. hiders move only while it's dark, and the seeker sees only what their lantern lights. Fits the lantern theme well.
 
 ### Quizzes
 

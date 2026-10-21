@@ -2,6 +2,7 @@
 //! id or format without naming its type. A new minigame becomes playable by adding it to [`ALL`].
 
 use minigame_firefly_catch::FireflyCatch;
+use minigame_hedge_maze::HedgeMaze;
 use minigame_lantern_echo::LanternEcho;
 use minigame_lantern_lottery::LanternLottery;
 use minigame_lantern_push::LanternPush;
@@ -20,6 +21,7 @@ pub const ALL: &[MinigameEntry] = &[
     MinigameEntry::of::<SkyLanterns>(),
     MinigameEntry::of::<LanternLottery>(),
     MinigameEntry::of::<MusicalStools>(),
+    MinigameEntry::of::<HedgeMaze>(),
 ];
 
 pub fn find(id: &str) -> Option<&'static MinigameEntry> {

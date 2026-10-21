@@ -137,6 +137,7 @@ minigame-lantern-tower = Lantern Tower
 minigame-sky-lanterns = Sky Lanterns
 minigame-lantern-lottery = Lantern Lottery
 minigame-musical-stools = Musical Stools
+minigame-hedge-maze = Hedge Maze
 
 ## Quick Draw
 quick-draw-title = QUICK DRAW
@@ -294,6 +295,37 @@ musical-stools-seated = seated +{ $gain }
 musical-stools-left-out = left standing
 musical-stools-caught = caught!
 musical-stools-cat = the cat
+
+## Hedge Maze
+hedge-maze-title = HEDGE MAZE
+hedge-maze-how = The maze is dark. Your lantern lights the hedges near you, and whatever's lit stays lit for everyone. Find the way to the beacon in the middle! Hold a turn early and you'll take it when it opens.
+hedge-maze-stick = walk
+hedge-maze-a = flare: lights up a wide circle, for everyone (once per maze)
+hedge-maze-goal = 3 mazes, each scored by who gets home first. Most points wins!
+hedge-maze-goal-teams = 3 mazes, each scored by who gets home first; your team's points add up. Most points wins!
+hedge-maze-goal-solo = { $player } is the ghost: faster, and its touch sends you back to your corner. Two of you three must reach the beacon within 20 seconds to take a maze. Best of 3!
+hedge-maze-maze = Maze { $maze } of { $mazes }
+hedge-maze-go = Find the beacon!
+hedge-maze-time = { $seconds } s
+hedge-maze-home = { $player } is home!
+hedge-maze-first = { $players } got home first!
+hedge-maze-nobody = Nobody got home!
+hedge-maze-ghost-maze = The ghost takes the maze!
+hedge-maze-trio-maze = Two got home!
+hedge-maze-rounds = ghost { $ghost } : { $trio } the three  (first to { $needed })
+hedge-maze-team = team: { $points }
+hedge-maze-points = { $points ->
+        [one] { $points } point
+       *[other] { $points } points
+    }
+hedge-maze-ghost = ghost, { $catches } caught
+hedge-maze-runner = runner
+hedge-maze-home-place = home { $place }
+hedge-maze-home-gain = home { $place } +{ $gain }
+hedge-maze-caught = caught!
+hedge-maze-lost = still lost
+hedge-maze-flare-ready = flare ready (A)
+hedge-maze-flare-used = searching
 
 ## Board
 board-turn-order = Turn order
