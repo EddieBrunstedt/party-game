@@ -6,7 +6,7 @@ use std::f32::consts::PI;
 
 use bevy::prelude::*;
 use minigame_lantern_echo::{
-    Dir, LEAD_IN_TICKS, LIT_TICKS, GAP_TICKS, LanternEcho, MAX_LENGTH, Phase, RACE_TICKS,
+    Dir, GAP_TICKS, LEAD_IN_TICKS, LIT_TICKS, LanternEcho, MAX_LENGTH, Phase, RACE_TICKS,
     STEP_TICKS, STUMBLE_TICKS, State, Status,
 };
 use sim_core::{Format, Seat, TICK_HZ};

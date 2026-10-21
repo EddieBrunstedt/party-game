@@ -136,6 +136,7 @@ minigame-lantern-echo = Lantern Echo
 minigame-lantern-tower = Lantern Tower
 minigame-sky-lanterns = Sky Lanterns
 minigame-lantern-lottery = Lantern Lottery
+minigame-musical-stools = Musical Stools
 
 ## Quick Draw
 quick-draw-title = QUICK DRAW
@@ -265,6 +266,34 @@ lantern-lottery-caught = MOTH!
 lantern-lottery-safe = safe
 lantern-lottery-caught-them = caught them!
 lantern-lottery-missed = missed
+
+## Musical Stools
+musical-stools-title = MUSICAL STOOLS
+musical-stools-how = Dance round the fence while the music plays: the stools spin inside it. When the music stops the fence drops, and the first to reach a free stool sits on it. There's always one stool too few! The music slows down just before it stops, but less each round.
+musical-stools-stick = move
+musical-stools-a = dash (shoves whoever you run into)
+musical-stools-goal = A seat is a point, and whoever sits first gets one more. Most points after 7 rounds wins!
+musical-stools-goal-teams = A seat is a point for your team, and whoever sits first gets one more. Most points after 7 rounds wins!
+musical-stools-goal-solo = { $player } is the cat and can't sit: once the music stops, the cat's dash catches you. The three of you must fill both stools to win a round. First to 3 rounds wins!
+musical-stools-round = Round { $round } of { $rounds }
+musical-stools-dance = Dance!
+musical-stools-slowing = The music's slowing down...
+musical-stools-sit = SIT!
+musical-stools-first = { $players } sat first!
+musical-stools-standing = { $players } left standing
+musical-stools-cat-round = The cat takes the round!
+musical-stools-trio-round = Both stools filled!
+musical-stools-rounds = cat { $cat } : { $trio } the three  (first to { $needed })
+musical-stools-team = team: { $points }
+musical-stools-points = { $points ->
+        [one] { $points } point
+       *[other] { $points } points
+    }
+musical-stools-dancing = dancing
+musical-stools-seated = seated +{ $gain }
+musical-stools-left-out = left standing
+musical-stools-caught = caught!
+musical-stools-cat = the cat
 
 ## Board
 board-turn-order = Turn order

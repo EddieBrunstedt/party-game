@@ -433,6 +433,26 @@ mod tests {
     }
 
     #[test]
+    fn musical_stools_goals_match_the_rules() {
+        use minigame_musical_stools::{CAT_ROUNDS_TO_WIN, ROUNDS};
+        let rounds = format!("{ROUNDS} rounds");
+        for format in [
+            Format::FreeForAll,
+            Format::TwoVsTwo {
+                team_of: [0, 0, 1, 1],
+            },
+        ] {
+            let goal = goal("musical-stools", &format);
+            assert!(goal.contains(&rounds), "{goal}");
+        }
+        let solo = goal("musical-stools", &Format::OneVsThree { solo: Seat(0) });
+        assert!(
+            solo.contains(&format!("First to {CAT_ROUNDS_TO_WIN} rounds")),
+            "{solo}"
+        );
+    }
+
+    #[test]
     fn the_countdown_counts_three_two_one() {
         let end = COUNTDOWN_TICKS as u32;
         assert_eq!(countdown(0), Some(3));

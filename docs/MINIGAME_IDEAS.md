@@ -64,7 +64,9 @@ A third friend's variant:
 
 > "You dont have to go down in numbers, you can get points every time you get one, and instead .... it gets more troublesome to get chairs?"
 
-Undecided. With four players, classic elimination is over in three short rounds and eliminated players sit out. Variants to weigh:
+Taken: Musical Stools (see ROADMAP.md), the points variant on a fenced turntable, with the 1v3 solo as the cat (the developer's choices, 2026-10-21). The notes that led there:
+
+With four players, classic elimination is over in three short rounds and eliminated players sit out. Variants to weigh:
 - **Elimination:** the classic, 3 chairs, then 2, then 1. Short, and players who are out watch.
 - **Points instead of elimination** (the third friend): always one chair fewer than players, a point for every round you sit, and the chairs get harder to reach over time. They could move or drift apart, the music could stop sooner or with less warning, or obstacles could come in. Nobody sits out, and the match length is set by the number of rounds.
 - Both versions fit the controls: the stick to move, A to sit. Shoving can come from Lantern Push's knockback. In 1v3 or 2v2, a team scores when any member sits.

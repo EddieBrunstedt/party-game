@@ -23,6 +23,7 @@ impl Plugin for AudioPlugin {
         // Built here rather than at Startup: the first state's OnEnter can already play sounds.
         app.add_plugins(KiraPlugin)
             .add_audio_channel::<Ambience>()
+            .add_audio_channel::<Music>()
             .init_resource::<Sounds>()
             .add_systems(Startup, start_ambience);
     }
@@ -31,6 +32,10 @@ impl Plugin for AudioPlugin {
 /// The channel the night ambience loops on, so effects never fight it for volume.
 #[derive(Resource)]
 struct Ambience;
+
+/// The channel minigame music plays on, so a view can slow it down or stop it.
+#[derive(Resource)]
+struct Music;
 
 /// Every sound effect in the game.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -370,6 +375,83 @@ const E6: f32 = 1318.51;
 const G6: f32 = 1567.98;
 const C7: f32 = 2093.0;
 
+/// A seamless loop of a little waltz, four bars of oom-pah-pah at 160 beats a minute, for
+/// minigames that dance to music (Musical Stools).
+pub fn dance_music() -> Vec<f32> {
+    const BEAT: f32 = 60.0 / 160.0;
+    let length = 12.0 * BEAT;
+    // Each bar: the bass on the beat, a chord on the two after, and the tune over the top as
+    // (note, beats) with a 0 note for a rest.
+    type Bar = (f32, [f32; 3], [(f32, f32); 3]);
+    let bars: [Bar; 4] = [
+        (
+            130.81,
+            [329.63, 392.0, 523.25],
+            [(E5, 1.0), (G5, 1.0), (C6, 1.0)],
+        ),
+        (
+            98.0,
+            [246.94, 293.66, 392.0],
+            [(B5, 2.0), (D6, 1.0), (0.0, 0.0)],
+        ),
+        (
+            87.31,
+            [349.23, 440.0, 523.25],
+            [(A5, 1.0), (C6, 1.0), (A5, 1.0)],
+        ),
+        (
+            98.0,
+            [246.94, 293.66, 392.0],
+            [(G5, 2.0), (587.33, 1.0), (0.0, 0.0)],
+        ),
+    ];
+    let mut tones = Vec::new();
+    for (bar, (bass, chord, tune)) in bars.iter().enumerate() {
+        let start = bar as f32 * 3.0 * BEAT;
+        tones.push(
+            Tone::note(Wave::Triangle, *bass, BEAT * 0.9)
+                .at(start)
+                .decay(1.2),
+        );
+        for beat in 1..3 {
+            for note in chord {
+                tones.push(
+                    Tone::note(Wave::Pulse(0.25), *note, BEAT * 0.45)
+                        .at(start + beat as f32 * BEAT)
+                        .decay(2.0)
+                        .lowpass(3000.0)
+                        .volume(0.22),
+                );
+            }
+        }
+        let mut at = start;
+        for (note, beats) in tune {
+            if *beats > 0.0 {
+                tones.push(
+                    Tone::note(Wave::Pulse(0.5), *note, BEAT * beats * 0.9)
+                        .at(at)
+                        .decay(0.8)
+                        .vibrato(0.006, 5.5)
+                        .lowpass(4500.0)
+                        .volume(0.45),
+                );
+            }
+            at += BEAT * beats;
+        }
+    }
+    let mut samples = sfx::render(&tones, 0.5);
+    samples.resize((length * SAMPLE_RATE as f32) as usize, 0.0);
+    // Fade both ends a touch so the loop doesn't click where it wraps.
+    let fade = (0.01 * SAMPLE_RATE as f32) as usize;
+    let n = samples.len();
+    for i in 0..fade {
+        let k = i as f32 / fade as f32;
+        samples[i] *= k;
+        samples[n - 1 - i] *= k;
+    }
+    samples
+}
+
 /// A seamless 12 s loop of crickets over a soft wind.
 pub fn night_ambience() -> Vec<f32> {
     let length = 12.0;
@@ -429,6 +511,7 @@ fn source(samples: &[f32]) -> AudioSource {
 pub struct Sounds {
     effects: Vec<Handle<AudioSource>>,
     ambience: Handle<AudioSource>,
+    dance: Handle<AudioSource>,
 }
 
 impl FromWorld for Sounds {
@@ -440,6 +523,7 @@ impl FromWorld for Sounds {
                 .map(|s| sources.add(source(&s.render())))
                 .collect(),
             ambience: sources.add(source(&night_ambience())),
+            dance: sources.add(source(&dance_music())),
         }
     }
 }
@@ -477,6 +561,30 @@ impl Sfx<'_> {
     }
 }
 
+/// Plays minigame music: one looping tune at a time, which a view can slow down or stop.
+#[derive(SystemParam)]
+pub struct MusicPlayer<'w> {
+    channel: Res<'w, AudioChannel<Music>>,
+    sounds: Res<'w, Sounds>,
+}
+
+impl MusicPlayer<'_> {
+    /// Start the dance music from the top, looping.
+    pub fn play_dance(&self) {
+        self.channel.stop();
+        self.channel.play(self.sounds.dance.clone()).looped();
+    }
+
+    pub fn stop(&self) {
+        self.channel.stop();
+    }
+
+    /// `rate` scales speed and pitch together, as a record player slowing down would.
+    pub fn set_rate(&self, rate: f64) {
+        self.channel.set_playback_rate(rate);
+    }
+}
+
 /// Writes every sound and the ambience to `dir` as WAVs (`--dump-sfx`).
 pub fn dump(dir: &std::path::Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
@@ -484,7 +592,8 @@ pub fn dump(dir: &std::path::Path) -> std::io::Result<()> {
         let name = format!("{sound:?}").to_lowercase();
         std::fs::write(dir.join(format!("{name}.wav")), sfx::wav(&sound.render()))?;
     }
-    std::fs::write(dir.join("ambience.wav"), sfx::wav(&night_ambience()))
+    std::fs::write(dir.join("ambience.wav"), sfx::wav(&night_ambience()))?;
+    std::fs::write(dir.join("dance.wav"), sfx::wav(&dance_music()))
 }
 
 #[cfg(test)]
@@ -504,6 +613,9 @@ mod tests {
         }
         let ambience = night_ambience();
         assert_eq!(ambience.len(), 12 * SAMPLE_RATE as usize);
+        let dance = dance_music();
+        assert_eq!(dance.len(), (4.5 * SAMPLE_RATE as f32) as usize);
+        assert!(dance.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
     }
 
     #[test]

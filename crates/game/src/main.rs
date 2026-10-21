@@ -12,6 +12,7 @@ mod lantern_push;
 mod lantern_tower;
 mod menus;
 mod minigames;
+mod musical_stools;
 mod online;
 mod palette;
 mod particles;

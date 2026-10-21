@@ -13,13 +13,15 @@ use minigame_lantern_echo::LanternEcho;
 use minigame_lantern_lottery::LanternLottery;
 use minigame_lantern_push::LanternPush;
 use minigame_lantern_tower::LanternTower;
+use minigame_musical_stools::MusicalStools;
 use minigame_quick_draw::QuickDraw;
 use minigame_sky_lanterns::SkyLanterns;
 use net::check::{OnlineMatch, OnlineReport};
 use net::{Faults, UdpTransport};
 use sim_board::{Board, Event, Game, Rules, Summary};
 use sim_core::{
-    Difficulty, Format, FormatKind, MAX_PLAYERS, Minigame, MinigameEntry, PlayerSetup, RunConfig, Seat,
+    Difficulty, Format, FormatKind, MAX_PLAYERS, Minigame, MinigameEntry, PlayerSetup, RunConfig,
+    Seat,
 };
 
 #[derive(Parser)]
@@ -156,6 +158,7 @@ fn checker(id: &str) -> Option<fn(u64) -> Result<(), String>> {
         LanternTower::ID => Some(sim_check::check_all::<LanternTower>),
         SkyLanterns::ID => Some(sim_check::check_all::<SkyLanterns>),
         LanternLottery::ID => Some(sim_check::check_all::<LanternLottery>),
+        MusicalStools::ID => Some(sim_check::check_all::<MusicalStools>),
         _ => None,
     }
 }
@@ -173,6 +176,7 @@ fn net_checker(id: &str) -> Option<NetChecker> {
         LanternTower::ID => Some(play_over_udp::<LanternTower>),
         SkyLanterns::ID => Some(play_over_udp::<SkyLanterns>),
         LanternLottery::ID => Some(play_over_udp::<LanternLottery>),
+        MusicalStools::ID => Some(play_over_udp::<MusicalStools>),
         _ => None,
     }
 }
@@ -235,6 +239,7 @@ fn checker_setups(id: &str, seed: u64) -> Vec<sim_check::Setup> {
         LanternTower::ID => sim_check::setups::<LanternTower>(seed),
         SkyLanterns::ID => sim_check::setups::<SkyLanterns>(seed),
         LanternLottery::ID => sim_check::setups::<LanternLottery>(seed),
+        MusicalStools::ID => sim_check::setups::<MusicalStools>(seed),
         _ => Vec::new(),
     }
 }

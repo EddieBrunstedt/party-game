@@ -4,11 +4,10 @@ Briefing for the next session. Earlier sessions' notes are in git history (`git 
 
 ## Done this session
 
-- A d-pad fix from Lantern Lottery's playtest: a released DualSense stick rests slightly off centre, which hid the d-pad in every minigame; `--log-input` now logs each person's input as minigames read it.
-- Lantern Lottery (secret picks with luck, all four formats; two sides take turns hiding moths, the 1v3 solo hides the moth) built to playable and ticked: the previous session left the simulation and bots uncommitted, this one added the view, strings, bots report and screenshots. Rules, decisions, the bots report and the playtest command are under its item in `docs/ROADMAP.md`. A view test checks that nothing on screen depends on a pick before the reveal.
-- Sky Lanterns (shooting gallery, all four formats; in 1v3 the three fly lanterns and hide while the solo shoots, the developer's choice) built to playable and ticked; rules, decisions, the bots report and the playtest command are under its item in `docs/ROADMAP.md`.
-- Lantern Tower (stacking race with sabotage, all four formats) built to playable and ticked; rules, decisions, the bots report and the playtest command are under its item in `docs/ROADMAP.md`. The developer chose the sabotage (a gust that speeds up rivals' blocks) and that a miss knocks the top floor off. The developer's playtest found the outer towers harder to judge; the camera is now orthographic, and it's committed.
-- Earlier the same day: Lantern Echo, network reconnects (item 7) and save and resume (item 8); see `git log`.
+- Musical Stools (musical chairs, all four formats) built to playable and ticked. The developer chose the points variant (one stool fewer than players, nobody sits out, a bonus for sitting first, 7 rounds), the fenced turntable while the music plays, and the 1v3 solo as the cat. Rules, decisions, the bots report and the playtest command are under its item in `docs/ROADMAP.md`.
+- The first music in the game: `audio::dance_music`, a synthesized 4.5 s waltz loop on its own channel, played through `MusicPlayer` (play, stop, set the rate). The view follows the simulation, which decides when the music plays, slows and stops.
+- `minigames.rs` now adds each minigame's runner and view as a pair: Bevy's plugin tuples stop short of 16, which the eighth minigame reached.
+- Earlier the same day: Lantern Lottery, Sky Lanterns, Lantern Tower, Lantern Echo, network reconnects and save and resume; see `git log -p docs/HANDOFF.md`.
 
 ## How to test saves
 
@@ -38,6 +37,8 @@ Briefing for the next session. Earlier sessions' notes are in git history (`git 
 
 - Lantern Lottery: playtest 1 is done (see its item in `docs/ROADMAP.md`). The d-pad bug it found is fixed for every minigame (a pressed d-pad now wins over a stick resting off centre). Still open, for the developer to decide, not a roadmap item: never seeing your own pick felt hard to trust. Offered: you get the lantern you point at when you press A, a short rumble when the lock-in counts, and "point at a lantern first" if A is pressed without pointing; or rumble only; or leave it. Don't build any of these unless the developer asks.
 - Sky Lanterns: see "Needs human playtest" under its item. The open question is whether a shooting gallery, where the better shooter wins almost every time, needs a catch-up twist.
+
+- Musical Stools: see "Needs human playtest" under its item. One rule needs the developer's OK: in 1v3 the cat's **dash catches** a runner (out for the round). The agreed version (the cat only shoves) let the three fill both stools in 0.4 s, and the cat won 0–1% of matches; with catching it wins 48–53%. If the developer doesn't like catching, the other levers that were tried (a wider fence, catching on any touch) are in the item's decisions.
 
 ### Lantern Tower's camera (fixed)
 

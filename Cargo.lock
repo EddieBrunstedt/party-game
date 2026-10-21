@@ -3016,6 +3016,7 @@ dependencies = [
  "minigame-lantern-lottery",
  "minigame-lantern-push",
  "minigame-lantern-tower",
+ "minigame-musical-stools",
  "minigame-quick-draw",
  "minigame-registry",
  "minigame-sky-lanterns",
@@ -4010,6 +4011,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "minigame-musical-stools"
+version = "0.1.0"
+dependencies = [
+ "sim-check",
+ "sim-core",
+]
+
+[[package]]
 name = "minigame-quick-draw"
 version = "0.1.0"
 dependencies = [
@@ -4026,6 +4035,7 @@ dependencies = [
  "minigame-lantern-lottery",
  "minigame-lantern-push",
  "minigame-lantern-tower",
+ "minigame-musical-stools",
  "minigame-quick-draw",
  "minigame-sky-lanterns",
  "sim-board",
@@ -5849,6 +5859,7 @@ dependencies = [
  "minigame-lantern-lottery",
  "minigame-lantern-push",
  "minigame-lantern-tower",
+ "minigame-musical-stools",
  "minigame-quick-draw",
  "minigame-registry",
  "minigame-sky-lanterns",

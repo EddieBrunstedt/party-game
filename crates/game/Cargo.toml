@@ -13,6 +13,7 @@ minigame-lantern-echo.workspace = true
 minigame-lantern-tower.workspace = true
 minigame-sky-lanterns.workspace = true
 minigame-lantern-lottery.workspace = true
+minigame-musical-stools.workspace = true
 minigame-registry.workspace = true
 sim-board.workspace = true
 net.workspace = true
