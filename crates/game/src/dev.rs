@@ -4,6 +4,9 @@ use std::path::PathBuf;
 
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
+use sim_core::{Button, Input, MAX_PLAYERS, Seat};
+
+use crate::runner::{Controller, Seats, find_pad, human_input};
 
 /// Saves screenshots at fixed times after startup, then exits. Lets visuals be checked
 /// without a human at the keyboard.
@@ -56,12 +59,42 @@ fn take_screenshots(
     }
 }
 
-/// Logs every gamepad button press, to diagnose controller mappings.
+/// Logs every gamepad button press, and each person's input as minigames read it whenever it
+/// changes, to diagnose controller mappings.
 pub struct InputLogPlugin;
 
 impl Plugin for InputLogPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, log_gamepad_presses);
+        app.add_systems(Update, (log_gamepad_presses, log_seat_inputs));
+    }
+}
+
+fn log_seat_inputs(
+    seats: Option<Res<Seats>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    gamepads: Query<(Entity, &Gamepad)>,
+    mut last: Local<[Input; MAX_PLAYERS]>,
+) {
+    let Some(seats) = seats else {
+        return;
+    };
+    for seat in Seat::ALL {
+        let Some(Controller::Human { gamepad, keyboard }) = seats.0[seat.index()] else {
+            continue;
+        };
+        let input = human_input(keyboard, find_pad(gamepad, &gamepads), &keys, 0);
+        if input != last[seat.index()] {
+            info!(
+                "{seat:?} input: stick ({}, {}), A {}, B {}, left stick {:?}, d-pad {:?}",
+                input.stick_x,
+                input.stick_y,
+                input.held(Button::A),
+                input.held(Button::B),
+                find_pad(gamepad, &gamepads).map(|pad| pad.left_stick()),
+                find_pad(gamepad, &gamepads).map(|pad| pad.dpad()),
+            );
+            last[seat.index()] = input;
+        }
     }
 }
 

@@ -425,7 +425,7 @@ fn latch_presses(
     }
 }
 
-fn human_input(
+pub(crate) fn human_input(
     keyboard: bool,
     pad: Option<&Gamepad>,
     keys: &ButtonInput<KeyCode>,
@@ -461,11 +461,13 @@ fn human_input(
                     input.set(button, true);
                 }
             }
-            if stick == Vec2::ZERO {
-                stick = pad.left_stick();
-            }
+            // A pressed d-pad wins over the stick: a stick that was let go often rests a little
+            // off centre, which would otherwise hide the d-pad.
             if stick == Vec2::ZERO {
                 stick = pad.dpad();
+            }
+            if stick == Vec2::ZERO {
+                stick = pad.left_stick();
             }
         }
         // A keyboard seat always has a working device; a pad-only seat without its pad is lost.
@@ -644,4 +646,25 @@ fn step_run<M: Minigame>(
     active.previous = active.run.game.clone();
     active.run.step(inputs);
     active.stepped = true;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Playtest: a DualSense's stick, let go, rested at (0.047, 0.008) after Bevy's dead zone,
+    /// and the d-pad was ignored, so a d-pad pick never locked in.
+    #[test]
+    fn the_d_pad_wins_over_a_stick_resting_off_centre() {
+        let keys = ButtonInput::<KeyCode>::default();
+        let mut pad = Gamepad::default();
+        pad.analog_mut().set(GamepadAxis::LeftStickX, 0.046875);
+        pad.analog_mut().set(GamepadAxis::LeftStickY, 0.0078125);
+        let resting = human_input(false, Some(&pad), &keys, 0);
+        assert_eq!((resting.stick_x, resting.stick_y), (6, 1));
+
+        pad.analog_mut().set(GamepadButton::DPadUp, 1.0);
+        let input = human_input(false, Some(&pad), &keys, 0);
+        assert_eq!((input.stick_x, input.stick_y), (0, 127));
+    }
 }
