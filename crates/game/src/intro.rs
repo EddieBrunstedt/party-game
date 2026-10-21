@@ -486,6 +486,19 @@ mod tests {
     }
 
     #[test]
+    fn tabletop_rally_card_matches_the_rules() {
+        use minigame_tabletop_rally::WIN_POINTS;
+        for key in [
+            "tabletop-rally-goal",
+            "tabletop-rally-goal-teams",
+            "tabletop-rally-goal-solo",
+        ] {
+            let text = tr!(key, player = "P1");
+            assert!(text.contains(&format!("First to {WIN_POINTS}")), "{text}");
+        }
+    }
+
+    #[test]
     fn the_countdown_counts_three_two_one() {
         let end = COUNTDOWN_TICKS as u32;
         assert_eq!(countdown(0), Some(3));

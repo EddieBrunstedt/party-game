@@ -26,6 +26,7 @@ mod save;
 mod scenery;
 mod sfx;
 mod sky_lanterns;
+mod tabletop_rally;
 
 use std::path::PathBuf;
 

@@ -3022,6 +3022,7 @@ dependencies = [
  "minigame-quick-draw",
  "minigame-registry",
  "minigame-sky-lanterns",
+ "minigame-tabletop-rally",
  "net",
  "sim-board",
  "sim-core",
@@ -4058,12 +4059,21 @@ dependencies = [
  "minigame-musical-stools",
  "minigame-quick-draw",
  "minigame-sky-lanterns",
+ "minigame-tabletop-rally",
  "sim-board",
  "sim-core",
 ]
 
 [[package]]
 name = "minigame-sky-lanterns"
+version = "0.1.0"
+dependencies = [
+ "sim-check",
+ "sim-core",
+]
+
+[[package]]
+name = "minigame-tabletop-rally"
 version = "0.1.0"
 dependencies = [
  "sim-check",
@@ -5885,6 +5895,7 @@ dependencies = [
  "minigame-quick-draw",
  "minigame-registry",
  "minigame-sky-lanterns",
+ "minigame-tabletop-rally",
  "net",
  "sim-board",
  "sim-check",

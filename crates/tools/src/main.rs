@@ -18,6 +18,7 @@ use minigame_lantern_tower::LanternTower;
 use minigame_musical_stools::MusicalStools;
 use minigame_quick_draw::QuickDraw;
 use minigame_sky_lanterns::SkyLanterns;
+use minigame_tabletop_rally::TabletopRally;
 use net::check::{OnlineMatch, OnlineReport};
 use net::{Faults, UdpTransport};
 use sim_board::{Board, Event, Game, Rules, Summary};
@@ -163,6 +164,7 @@ fn checker(id: &str) -> Option<fn(u64) -> Result<(), String>> {
         MusicalStools::ID => Some(sim_check::check_all::<MusicalStools>),
         HedgeMaze::ID => Some(sim_check::check_all::<HedgeMaze>),
         LanternDerby::ID => Some(sim_check::check_all::<LanternDerby>),
+        TabletopRally::ID => Some(sim_check::check_all::<TabletopRally>),
         _ => None,
     }
 }
@@ -183,6 +185,7 @@ fn net_checker(id: &str) -> Option<NetChecker> {
         MusicalStools::ID => Some(play_over_udp::<MusicalStools>),
         HedgeMaze::ID => Some(play_over_udp::<HedgeMaze>),
         LanternDerby::ID => Some(play_over_udp::<LanternDerby>),
+        TabletopRally::ID => Some(play_over_udp::<TabletopRally>),
         _ => None,
     }
 }
@@ -248,6 +251,7 @@ fn checker_setups(id: &str, seed: u64) -> Vec<sim_check::Setup> {
         MusicalStools::ID => sim_check::setups::<MusicalStools>(seed),
         HedgeMaze::ID => sim_check::setups::<HedgeMaze>(seed),
         LanternDerby::ID => sim_check::setups::<LanternDerby>(seed),
+        TabletopRally::ID => sim_check::setups::<TabletopRally>(seed),
         _ => Vec::new(),
     }
 }

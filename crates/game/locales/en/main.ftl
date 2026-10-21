@@ -139,6 +139,7 @@ minigame-lantern-lottery = Lantern Lottery
 minigame-musical-stools = Musical Stools
 minigame-hedge-maze = Hedge Maze
 minigame-lantern-derby = Lantern Derby
+minigame-tabletop-rally = Tabletop Rally
 
 ## Quick Draw
 quick-draw-title = QUICK DRAW
@@ -347,6 +348,34 @@ lantern-derby-wall = too far!
 lantern-derby-lid-ready = lid ready (A)
 lantern-derby-lid-shut = lid shut
 lantern-derby-lid-cooling = lid resetting
+
+tabletop-rally-title = TABLETOP RALLY
+tabletop-rally-how = Toy cars race round a giant table at night. The camera follows whoever is in front: drop off the edge of the screen, or off the table, and you're out of the round. The tablecloth is slow and the props are solid. If a round drags on, the screen closes in.
+tabletop-rally-stick = point where you want to drive
+tabletop-rally-a = drive
+tabletop-rally-b = brake, then reverse
+tabletop-rally-goal = Be the last car on screen to take the round. First to 3 rounds wins!
+tabletop-rally-goal-teams = Your team takes the round once only your cars are left on screen. First to 3 rounds wins!
+tabletop-rally-goal-solo = { $player } is the getaway car: a little faster, with a head start, and the camera follows it. It must leave all three chasers off screen to take the round. The three take it by touching the getaway car. First to 3 rounds wins!
+tabletop-rally-round = Round { $round }
+tabletop-rally-ready = Ready...
+tabletop-rally-go = Go!
+tabletop-rally-closing = The screen is closing in!
+tabletop-rally-takes = { $names } { $count ->
+        [one] takes
+       *[other] take
+    } the round!
+tabletop-rally-caught = Caught!
+tabletop-rally-escaped = Got away!
+tabletop-rally-off-table = Off the table!
+tabletop-rally-time = Time's up: the furthest along takes it
+tabletop-rally-photo = Photo finish: the furthest along takes it
+tabletop-rally-out-screen = off screen
+tabletop-rally-out-table = off the table
+tabletop-rally-out-caught = caught!
+tabletop-rally-points = rounds { $points }/{ $goal }
+tabletop-rally-getaway = getaway
+tabletop-rally-chaser = chaser
 
 ## Board
 board-turn-order = Turn order
