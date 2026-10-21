@@ -473,6 +473,19 @@ mod tests {
     }
 
     #[test]
+    fn lantern_derby_card_matches_the_holes() {
+        use minigame_lantern_derby::HOLES;
+        let top = HOLES.iter().max_by_key(|h| h.y).unwrap();
+        assert_eq!(top.value, 3, "the card says the top hole is worth 3");
+        assert!(
+            HOLES
+                .iter()
+                .all(|h| h.value <= top.value && h.radius >= top.radius)
+        );
+        assert!(tr!("lantern-derby-how").contains("worth 3"));
+    }
+
+    #[test]
     fn the_countdown_counts_three_two_one() {
         let end = COUNTDOWN_TICKS as u32;
         assert_eq!(countdown(0), Some(3));

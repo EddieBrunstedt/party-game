@@ -10,6 +10,7 @@ use std::time::Duration;
 use clap::{Parser, Subcommand, ValueEnum};
 use minigame_firefly_catch::FireflyCatch;
 use minigame_hedge_maze::HedgeMaze;
+use minigame_lantern_derby::LanternDerby;
 use minigame_lantern_echo::LanternEcho;
 use minigame_lantern_lottery::LanternLottery;
 use minigame_lantern_push::LanternPush;
@@ -161,6 +162,7 @@ fn checker(id: &str) -> Option<fn(u64) -> Result<(), String>> {
         LanternLottery::ID => Some(sim_check::check_all::<LanternLottery>),
         MusicalStools::ID => Some(sim_check::check_all::<MusicalStools>),
         HedgeMaze::ID => Some(sim_check::check_all::<HedgeMaze>),
+        LanternDerby::ID => Some(sim_check::check_all::<LanternDerby>),
         _ => None,
     }
 }
@@ -180,6 +182,7 @@ fn net_checker(id: &str) -> Option<NetChecker> {
         LanternLottery::ID => Some(play_over_udp::<LanternLottery>),
         MusicalStools::ID => Some(play_over_udp::<MusicalStools>),
         HedgeMaze::ID => Some(play_over_udp::<HedgeMaze>),
+        LanternDerby::ID => Some(play_over_udp::<LanternDerby>),
         _ => None,
     }
 }
@@ -244,6 +247,7 @@ fn checker_setups(id: &str, seed: u64) -> Vec<sim_check::Setup> {
         LanternLottery::ID => sim_check::setups::<LanternLottery>(seed),
         MusicalStools::ID => sim_check::setups::<MusicalStools>(seed),
         HedgeMaze::ID => sim_check::setups::<HedgeMaze>(seed),
+        LanternDerby::ID => sim_check::setups::<LanternDerby>(seed),
         _ => Vec::new(),
     }
 }

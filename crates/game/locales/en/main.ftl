@@ -138,6 +138,7 @@ minigame-sky-lanterns = Sky Lanterns
 minigame-lantern-lottery = Lantern Lottery
 minigame-musical-stools = Musical Stools
 minigame-hedge-maze = Hedge Maze
+minigame-lantern-derby = Lantern Derby
 
 ## Quick Draw
 quick-draw-title = QUICK DRAW
@@ -326,6 +327,26 @@ hedge-maze-caught = caught!
 hedge-maze-lost = still lost
 hedge-maze-flare-ready = flare ready (A)
 hedge-maze-flare-used = searching
+
+lantern-derby-title = LANTERN DERBY
+lantern-derby-how = Roll glowing balls up your board. A ball drops into the hole it stops on and moves your runner by the hole's dots: the small hole at the top is worth 3. The meter beside your board, and the line across it, show where the ball will stop. Balls wobble a little, and one on a rim may drop in or bounce out.
+lantern-derby-stick = aim (it stays where you leave it); the barker moves the lid
+lantern-derby-a = hold to charge, let go to roll; the barker snaps the lid shut
+lantern-derby-goal = First runner to the finish wins!
+lantern-derby-goal-teams = You and your partner share a runner: first to the finish wins!
+lantern-derby-goal-solo = { $player } is the barker: move a lid over the three's boards and snap it shut on a hole with A. Every ball that bounces off it moves the barker's runner. The three share a runner with further to go. First to the finish wins!
+lantern-derby-go = Roll!
+lantern-derby-points = { $points } of { $goal }
+lantern-derby-team = team: { $points } of { $goal }
+lantern-derby-barker = barker: { $points } of { $goal }
+lantern-derby-in = +{ $value }!
+lantern-derby-rim = off the rim!
+lantern-derby-shut = lid!
+lantern-derby-short = missed
+lantern-derby-wall = too far!
+lantern-derby-lid-ready = lid ready (A)
+lantern-derby-lid-shut = lid shut
+lantern-derby-lid-cooling = lid resetting
 
 ## Board
 board-turn-order = Turn order

@@ -3013,6 +3013,7 @@ dependencies = [
  "kira",
  "minigame-firefly-catch",
  "minigame-hedge-maze",
+ "minigame-lantern-derby",
  "minigame-lantern-echo",
  "minigame-lantern-lottery",
  "minigame-lantern-push",
@@ -3988,6 +3989,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "minigame-lantern-derby"
+version = "0.1.0"
+dependencies = [
+ "sim-check",
+ "sim-core",
+]
+
+[[package]]
 name = "minigame-lantern-echo"
 version = "0.1.0"
 dependencies = [
@@ -4041,6 +4050,7 @@ version = "0.1.0"
 dependencies = [
  "minigame-firefly-catch",
  "minigame-hedge-maze",
+ "minigame-lantern-derby",
  "minigame-lantern-echo",
  "minigame-lantern-lottery",
  "minigame-lantern-push",
@@ -5866,6 +5876,7 @@ dependencies = [
  "libc",
  "minigame-firefly-catch",
  "minigame-hedge-maze",
+ "minigame-lantern-derby",
  "minigame-lantern-echo",
  "minigame-lantern-lottery",
  "minigame-lantern-push",

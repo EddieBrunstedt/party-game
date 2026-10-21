@@ -7,6 +7,12 @@ Briefing for the next session. Earlier sessions' notes are in git history (`git 
 - Committed Musical Stools (`8bf4f10`), which the previous session left uncommitted after its tests and clippy passed.
 - **Hedge Maze** built to playable, ticked and committed. A race to a beacon through a dark maze where lit hedges stay lit for everyone, 3 mazes for points; the 1v3 solo is a ghost whose touch sends runners back to their corner. The developer chose all four rule options offered (dark with a shared reveal, 3 mazes for points, a hunting ghost, A as a once-per-maze flare). Rules, tuning, the bots report and surprises are under its item in `docs/ROADMAP.md`; DESIGN.md §3.3 has its entry.
 
+- **Lantern Derby** built to playable, ticked and committed: the Tivoli horse race merged with "hit the mark". Aim with the stick, hold A to charge on a meter that swings up and back, let go to roll a ball up your board; the hole it stops in moves your runner. The developer chose aim and charge, a board each, a little luck (wobble and rims) and the 1v3 solo as the barker, who snaps a lid shut over the three's holes. Rules, the bots report and the decisions are under its item in `docs/ROADMAP.md`; DESIGN.md §3.3 has its entry.
+
+Notes for Lantern Derby, if it needs tuning after a playtest:
+- Bot knobs are `bot::skill` in the crate (picks, aim_error, power_error, pause, reaction). 1v3 balance knobs are `TRIO_GOAL` and `BARKER_GOAL` (their ratio sets the balance; the barker's lid stops about 38% of the value) and the lid's `SHUT_TICKS`, `LID_COOLDOWN`, `LID_REACH` and `CURSOR_SPEED`.
+- Feel knobs: `CHARGE_TICKS` (the meter's speed), `AIM_DIVISOR` (the aim's speed), `WOBBLE`, `RIM` and the holes' sizes in `HOLES`.
+
 Notes for Hedge Maze, if it needs tuning after a playtest:
 - Bot tuning knobs are `bot::skill` in the crate (delay, noise, flare_dark, fear, urgency, intercepts). 1v3 balance knobs are `GHOST_SPEED`, `RESPAWN_TICKS`, `GHOST_RACE_TICKS` and `TRIO_NEEDED` (the card's text and an `intro.rs` test pin 2 and 20 s).
 - The generator's knobs are `NEWEST_PERCENT`, `MIN_PATH`, `CANDIDATES` and `LOOPS`; a test checks every corner is equally far from the beacon and the maze is the same turned a quarter.
@@ -43,6 +49,8 @@ Notes for Hedge Maze, if it needs tuning after a playtest:
 - Sky Lanterns: see "Needs human playtest" under its item. The open question is whether a shooting gallery, where the better shooter wins almost every time, needs a catch-up twist.
 
 - Musical Stools: see "Needs human playtest" under its item. One rule needs the developer's OK: in 1v3 the cat's **dash catches** a runner (out for the round). The agreed version (the cat only shoves) let the three fill both stools in 0.4 s, and the cat won 0–1% of matches; with catching it wins 48–53%. If the developer doesn't like catching, the other levers that were tried (a wider fence, catching on any touch) are in the item's decisions.
+
+- Lantern Derby: see "Needs human playtest" under its item (the meter's speed and readability, the aim's speed, whether the luck feels fair, the barker's fun). One decision to confirm with the developer: in 1v3 the barker **races too** (balls bouncing off its lid move its runner), because a fixed finish for the three within a time limit couldn't be balanced across difficulties (the barker won 69% at Easy and 0% at Normal and Hard). The developer chose the barker role; the win condition was this session's call.
 
 - Hedge Maze: see "Needs human playtest" under its item (stick feel in the corridors, whether the shared light makes following too strong, the ghost's speed and 20 s limit). Open, for the developer to decide: equal bots often tie because the maze is symmetric; a tie-break (e.g. total finishing time) would cut that, but ties share the win in every other minigame. Don't build it unless asked.
 
