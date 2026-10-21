@@ -200,9 +200,48 @@ The same content over the network: friends join by IP (over Tailscale or ZeroTie
   - Decision: one save slot. Starting a new board game overwrites it at its first turn.
   - Decision: saving is automatic, so a couch game is "quit" by closing the window. There's still no pause menu on the board to go back to the title.
   - Note: the save follows the simulation, which can be a few events ahead of the animation on screen; a resumed game starts where the simulation was.
-- [ ] **Online playtest.** The developer and at least one friend play a full board game over Tailscale.
-  - Done when: the session finishes and findings are noted, fixed or turned into items. Also settle the open board length question here (12 bot rounds take ~22 minutes; the target is 30–40).
+- **Deferred: online playtest.** The developer and at least one friend play a full board game over Tailscale. (Deliberately not a checkbox: on 2026-10-21 the developer chose to build minigames first. It comes back as an item when they ask for it.)
+  - Done when: the session finishes and findings are noted, fixed or turned into items. Also settle the open board length question here (12 bot rounds take ~22 minutes; the target is 30–40). More minigames change that number, so it's best settled after them anyway.
 
 ## Milestone 3: Launch
 
-Not yet broken down. Content targets are in DESIGN.md §6; minigame ideas waiting to be picked are in `MINIGAME_IDEAS.md`.
+Content targets are in DESIGN.md §6 (about 30 minigames at launch). Only the minigames are broken down so far; they come first (the developer's choice, 2026-10-21), before the deferred online playtest above.
+
+### Minigames
+
+The session picks which minigame to build; the developer left the choice open. Choose from `MINIGAME_IDEAS.md`, preferring ideas that add something the current three lack:
+- **Formats:** only Quick Draw supports duel, which launch needs; none is built around 1v3 or 2v2 from the start.
+- **Mechanics** not covered yet: sequence memory, aiming, secret simultaneous picks (quiz, pure luck), lanes and timing races, platforming.
+- **Cost:** ideas that need picture content, a question bank or platforming physics are bigger jobs. Say so in the item, or build the shared piece as its own item first.
+
+Firefly Catch is **on hold** (see its item): don't tune it, and don't count it as a model of what's fun.
+
+How to add one (the existing three are the templates):
+1. Before writing code, add an item for it just above "Next minigame" below, with what it introduces and its rules, and mark the idea as taken in `MINIGAME_IDEAS.md`. Ask the developer only about genuinely open design questions (e.g. musical chairs' variants).
+2. A crate `crates/minigames/<id>/` (plain Rust, `Minigame` impl, bots at all difficulties, rule tests and the `sim_check::check_all` unit test), added to the workspace dependencies, `minigame-registry` (`ALL`) and `tools`.
+3. The view: `game/src/<id>.rs` plus `minigames.rs` (`SHOWN` and the plugin; a test fails until it's there), Fluent strings (`minigame-<id>` and the instruction card keys; a test checks them). Placeholder visuals are fine at the playable level, but reuse the lantern folk, scenery, sounds and particles where it's cheap.
+4. Check it: `cargo run -p tools -- check <id>`, `cargo run -p tools -- net-check <id>` (online), a bots report like the earlier items' (match length, wins spread across seats, formats fair), and screenshots of every format under headless gamescope, looked at.
+5. Leave "Needs human playtest" notes with the command to try it. The developer's feel check (quality bar 3) can come in batches; it doesn't block the next minigame.
+
+New minigames join the board's pool as soon as they're in the registry, and saves keep working (a save stores its own pool).
+
+- [x] **Lantern Echo** (to playable). The memory race from `MINIGAME_IDEAS.md`: repeat the lanterns' sequence to move on. Introduces:
+  - sequence memory, and a lane race where every player goes at their own pace
+  - all four formats from the start, duel included (the first since Quick Draw)
+  - stick flicks as discrete inputs (a direction counts once, then the stick must come back to the centre), and the d-pad feeding a seat's stick
+  - Rules: each player has a lane with four lanterns in a diamond (up, right, down, left). The lanterns play a sequence, then the player repeats it with the stick. Getting it right moves them one step up the lane, and the next sequence is the same plus one more (Simon style), starting at 3 and reaching 8 at the sixth and last step. A wrong flick stumbles them for 0.75 s, and the same sequence plays again. Each seat has its own sequence from the seed, so watching a rival's lane gives nothing away. First to the end wins; at the 75 s limit the furthest along (steps, then how much of the current sequence) wins.
+  - Teams (1v3, 2v2): a team's steps add up and it needs six per member (the 1v3 trio 17, see below), so a strong player can carry (up to 9 steps each, sequences up to 11). At the time limit, teams are ranked by their share of the way to their own finish.
+  - Bots know the sequence and flick at a pace set by difficulty, with a chance of a wrong flick that grows with the sequence's length.
+  - Cost: small. No new content; placeholder lanes and lanterns.
+  - Done when: same bar as every minigame (below): `check_all` and `net-check` pass, bots give close matches in every format, and screenshots show readable lanes.
+  - Built: `crates/minigames/lantern-echo` (14 tests, `check_all` over 8 seeds) and `game/src/lantern_echo.rs`. `tools check lantern-echo` passes over 32 seeds; `tools net-check lantern-echo` played 26 online matches (2–4 peers, 40 ms delay, jitter, 5% loss) with every peer agreeing on every tick.
+  - Bots, 200 runs each (with `tools bots`, which gained `--format` and `--p1 <level>` for this): 4-player free-for-all averages 48 s (Easy), 39 s (Normal), 33 s (Hard), with wins spread 41–60 per seat. Over 300 races per difficulty and player count (2 and 4), the runner-up was one step behind at the finish in 69–98% of them, and three behind only 12 times (all Easy duels); timeouts only in 4 of 300 Easy duels. Bots slip 2.1–2.5 (Easy), 1.2 (Normal) and 0.5 (Hard) times a race. Duel and 2v2 are even (95–109 of 200).
+  - Decision: the 1v3 trio needs 17 steps, not 18. At 18 the solo won 66–76% of bot races: one runner's time is skewed by the odd costly slip (a stumble plus the replay), while three runners' combined pace isn't. At 17 the solo wins 53–58%; at 16 it was 31–41%.
+  - Decision: every seat has its own sequence (the idea had one shared sequence), so a player who is behind can't learn the next lantern by watching the leader's lane.
+  - Decision: the stick only, no buttons; the instruction card now requires at least one control instead of an A line. The d-pad feeds a seat's stick when the stick is centred (`runner.rs`), which helps every minigame.
+  - Note: one Hard bot beats three Easy bots 192 of 200 times, and one Easy bot beat three Normal ones 5 times: difficulty matters a lot more here than in Lantern Push (57%). Fine for a skill race, but worth watching once humans play it against bots.
+  - Screenshots of free-for-all, 1v3, 2v2 and duel (4 seats, two benched) checked under headless gamescope. A first pass had invisible unlit lane tiles and the seat panels covering the runners; tiles now glow faintly and the camera sits higher and further back.
+  - Playtest 1 (2026-10-21): the developer tried it: "it's great". No changes.
+  - Still worth watching in later playtests: whether 0.33 s lanterns (20 ticks lit, 8 dark) are too fast to follow, whether flicking (stick back to the centre between flicks) feels natural on a pad and with the d-pad, the 0.75 s stumble plus replay as the slip cost, and whether 6 steps (sequences up to 8) is long enough. `cargo run -p game -- --minigame lantern-echo --humans 1` (add `--format 1v3`, `--format 2v2` or `--format duel`).
+- [ ] **Next minigame.** Pick one as described above, then replace this line with that minigame's own item (keeping a fresh "Next minigame" item after it).
+  - Done when: the minigame is playable (the completion levels at the top): `check_all` and `net-check` pass, the bots give close matches in every supported format, and screenshots show a readable arena.

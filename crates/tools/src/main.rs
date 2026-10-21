@@ -9,13 +9,14 @@ use std::time::Duration;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use minigame_firefly_catch::FireflyCatch;
+use minigame_lantern_echo::LanternEcho;
 use minigame_lantern_push::LanternPush;
 use minigame_quick_draw::QuickDraw;
 use net::check::{OnlineMatch, OnlineReport};
 use net::{Faults, UdpTransport};
 use sim_board::{Board, Event, Game, Rules, Summary};
 use sim_core::{
-    Difficulty, Format, MAX_PLAYERS, Minigame, MinigameEntry, PlayerSetup, RunConfig, Seat,
+    Difficulty, Format, FormatKind, MAX_PLAYERS, Minigame, MinigameEntry, PlayerSetup, RunConfig, Seat,
 };
 
 #[derive(Parser)]
@@ -61,6 +62,13 @@ enum Command {
         players: usize,
         #[arg(long, value_enum, default_value_t = BotLevel::Normal)]
         difficulty: BotLevel,
+        /// Team layout; the solo and the teams rotate with the seed (1v3 and 2v2 need 4
+        /// players, duel 2).
+        #[arg(long, value_enum, default_value_t = FormatArg::Ffa)]
+        format: FormatArg,
+        /// P1's difficulty, when it should differ from the others'.
+        #[arg(long, value_enum)]
+        p1: Option<BotLevel>,
     },
     /// Play a whole bot-only board game, minigames included, and print how it went.
     Board {
@@ -96,6 +104,27 @@ enum BotLevel {
     Hard,
 }
 
+#[derive(Clone, Copy, ValueEnum)]
+enum FormatArg {
+    Ffa,
+    #[value(name = "1v3")]
+    OneVsThree,
+    #[value(name = "2v2")]
+    TwoVsTwo,
+    Duel,
+}
+
+impl From<FormatArg> for FormatKind {
+    fn from(format: FormatArg) -> Self {
+        match format {
+            FormatArg::Ffa => FormatKind::FreeForAll,
+            FormatArg::OneVsThree => FormatKind::OneVsThree,
+            FormatArg::TwoVsTwo => FormatKind::TwoVsTwo,
+            FormatArg::Duel => FormatKind::Duel,
+        }
+    }
+}
+
 impl From<BotLevel> for Difficulty {
     fn from(level: BotLevel) -> Self {
         match level {
@@ -120,6 +149,7 @@ fn checker(id: &str) -> Option<fn(u64) -> Result<(), String>> {
         QuickDraw::ID => Some(sim_check::check_all::<QuickDraw>),
         LanternPush::ID => Some(sim_check::check_all::<LanternPush>),
         FireflyCatch::ID => Some(sim_check::check_all::<FireflyCatch>),
+        LanternEcho::ID => Some(sim_check::check_all::<LanternEcho>),
         _ => None,
     }
 }
@@ -133,6 +163,7 @@ fn net_checker(id: &str) -> Option<NetChecker> {
         QuickDraw::ID => Some(play_over_udp::<QuickDraw>),
         LanternPush::ID => Some(play_over_udp::<LanternPush>),
         FireflyCatch::ID => Some(play_over_udp::<FireflyCatch>),
+        LanternEcho::ID => Some(play_over_udp::<LanternEcho>),
         _ => None,
     }
 }
@@ -191,6 +222,7 @@ fn checker_setups(id: &str, seed: u64) -> Vec<sim_check::Setup> {
         QuickDraw::ID => sim_check::setups::<QuickDraw>(seed),
         LanternPush::ID => sim_check::setups::<LanternPush>(seed),
         FireflyCatch::ID => sim_check::setups::<FireflyCatch>(seed),
+        LanternEcho::ID => sim_check::setups::<LanternEcho>(seed),
         _ => Vec::new(),
     }
 }
@@ -206,13 +238,31 @@ fn check(id: &str, seeds: u64) -> Result<(), String> {
     Ok(())
 }
 
-fn bots(id: &str, runs: u64, players: usize, difficulty: Difficulty) -> Result<(), String> {
+fn bots(
+    id: &str,
+    runs: u64,
+    players: usize,
+    difficulty: Difficulty,
+    kind: FormatKind,
+    p1: Option<Difficulty>,
+) -> Result<(), String> {
     let entry = find(id)?;
+    if !entry.formats.contains(&kind) {
+        return Err(format!("{} doesn't support {kind:?}", entry.id));
+    }
+    let level = |seat: Seat| match p1 {
+        Some(p1) if seat == Seat(0) => p1,
+        _ => difficulty,
+    };
     let mut wins = [0u64; MAX_PLAYERS];
+    // Wins (ties included) per team, by `Format::team`.
+    let mut team_wins = [0u64; MAX_PLAYERS];
     let mut total_ticks = 0u64;
     for seed in 0..runs {
         let setup = PlayerSetup::first(players);
-        let mut run = (entry.start)(seed, setup, Format::FreeForAll, RunConfig::default());
+        let format = sim_check::sample_format(kind, players, seed)
+            .ok_or_else(|| format!("{kind:?} doesn't work with {players} players"))?;
+        let mut run = (entry.start)(seed, setup, format, RunConfig::default());
         let mut ticks = 0;
         let outcome = loop {
             if ticks >= entry.max_ticks {
@@ -221,7 +271,7 @@ fn bots(id: &str, runs: u64, players: usize, difficulty: Difficulty) -> Result<(
                     entry.id, entry.max_ticks
                 ));
             }
-            run.step(Seat::ALL.map(|seat| run.bot_input(seat, difficulty)));
+            run.step(Seat::ALL.map(|seat| run.bot_input(seat, level(seat))));
             ticks += 1;
             if let Some(outcome) = run.outcome() {
                 break outcome;
@@ -231,14 +281,34 @@ fn bots(id: &str, runs: u64, players: usize, difficulty: Difficulty) -> Result<(
         for seat in outcome.winners() {
             wins[seat.index()] += 1;
         }
+        let mut won = [false; MAX_PLAYERS];
+        for team in outcome.winners().filter_map(|seat| format.team(seat)) {
+            won[team as usize] = true;
+        }
+        for (team, won) in won.iter().enumerate() {
+            team_wins[team] += *won as u64;
+        }
     }
     let avg_secs = total_ticks as f64 / runs as f64 / sim_core::TICK_HZ as f64;
+    let p1 = p1.map(|p1| format!(" (P1 {p1:?})")).unwrap_or_default();
     println!(
-        "{}: {runs} runs, {players} {difficulty:?} bots, avg {avg_secs:.1}s",
+        "{}: {runs} runs, {players} {difficulty:?} bots{p1}, {kind:?}, avg {avg_secs:.1}s",
         entry.id
     );
     for seat in Seat::ALL.iter().take(players) {
         println!("  P{} won {}", seat.0 + 1, wins[seat.index()]);
+    }
+    match kind {
+        FormatKind::OneVsThree => println!(
+            "  the solo won {} (ties included), the trio {}",
+            team_wins[0], team_wins[1]
+        ),
+        // Seat 0 is always on team 0 (`sim_check::sample_format`).
+        FormatKind::TwoVsTwo => println!(
+            "  P1's team won {} (ties included), the other {}",
+            team_wins[0], team_wins[1]
+        ),
+        FormatKind::FreeForAll | FormatKind::Duel => {}
     }
     Ok(())
 }
@@ -384,7 +454,16 @@ fn main() {
             runs,
             players,
             difficulty,
-        } => bots(&minigame, runs, players, difficulty.into()),
+            format,
+            p1,
+        } => bots(
+            &minigame,
+            runs,
+            players,
+            difficulty.into(),
+            format.into(),
+            p1.map(Difficulty::from),
+        ),
         Command::Board {
             seed,
             players,

@@ -1,9 +1,10 @@
-# Handoff: session 2026-10-21
+# Handoff: session 2026-10-21 (next: minigames)
 
 Briefing for the next session. Earlier sessions' notes are in git history (`git log -p docs/HANDOFF.md`).
 
 ## Done this session
 
+- Lantern Echo (memory race, all four formats) built to playable and ticked; details and the playtest command are under its item in `docs/ROADMAP.md`. `tools bots` gained `--format` and `--p1 <level>` for format and mixed-difficulty reports. The d-pad now feeds a seat's stick.
 - Item 7 (network disconnects and reconnect) committed after a full `cargo test --workspace` (`f637e07`).
 - Item 8 (save and resume) built, checked and ticked. Details, evidence and gaps are under item 8 in `docs/ROADMAP.md`; `docs/DESIGN.md` §3.4 and §4.4 are updated. `PROTOCOL_VERSION` 7, `SAVE_VERSION` 1.
 
@@ -31,7 +32,11 @@ Briefing for the next session. Earlier sessions' notes are in git history (`git 
 - A resumed game's seats keep their characters; players pick which seat with left/right.
 - Rejoining after a disconnect is by position, not identity (item 7).
 
-## Next
+## Next: add minigames
 
-1. Item 9: the online playtest with a friend over Tailscale (needs the developer). Settle the board length question there.
-2. Possible follow-ups: a pause menu on the board (back to the title), more save slots.
+The developer wants to build minigames for a while, and leaves the choice of which to the session. "Let's add some minigames" or "continue" both mean: take the **Next minigame** item in `docs/ROADMAP.md` (Milestone 3, Minigames). The steps for adding one and what to prefer are written there; the ideas are in `docs/MINIGAME_IDEAS.md`.
+
+- Milestone 2 is done apart from the online playtest, which is **deferred** (not a checkbox, so "continue" skips it). Don't start it unless the developer asks.
+- Firefly Catch is on hold: don't tune it.
+- Every new minigame must also pass `tools net-check <id>`, since the game plays online now.
+- Possible later follow-ups (not roadmap items yet): a pause menu on the board (back to the title), more save slots.

@@ -4,8 +4,9 @@
 //! first [`COUNTDOWN_TICKS`] of every run, so it's drawn here from [`Run::tick`] alone.
 //! A minigame's own code only supplies its strings, by key:
 //!
-//! - `{id}-title`, `{id}-goal`, `{id}-how` and `{id}-a` (what A does) are required;
-//! - `{id}-b` and `{id}-stick` are shown when the minigame uses them;
+//! - `{id}-title`, `{id}-goal` and `{id}-how` are required;
+//! - `{id}-stick`, `{id}-a` and `{id}-b` say what each control does, for the ones the minigame
+//!   uses (at least one);
 //! - `{id}-goal-teams` (2v2) and `{id}-goal-solo` (1v3, given `$player`) replace the goal in
 //!   those formats when present.
 
@@ -343,10 +344,11 @@ mod tests {
     #[test]
     fn every_minigame_has_a_card() {
         for id in SHOWN {
-            for suffix in ["title", "goal", "how", "a"] {
+            for suffix in ["title", "goal", "how"] {
                 let key = format!("{id}-{suffix}");
                 assert!(has_key(&key), "missing {key}");
             }
+            assert!(!controls(id).is_empty(), "{id} has no controls on its card");
         }
     }
 
@@ -354,6 +356,21 @@ mod tests {
     fn quick_draw_goal_matches_the_rules() {
         let points = minigame_quick_draw::POINTS_TO_WIN.to_string();
         assert!(goal("quick-draw", &Format::FreeForAll).contains(&points));
+    }
+
+    #[test]
+    fn lantern_echo_goals_match_the_rules() {
+        use minigame_lantern_echo::{STAGES, TRIO_STEPS};
+        let solo = goal("lantern-echo", &Format::OneVsThree { solo: Seat(0) });
+        assert!(solo.contains(&format!("{STAGES} steps")), "{solo}");
+        assert!(solo.contains(&TRIO_STEPS.to_string()), "{solo}");
+        let teams = goal(
+            "lantern-echo",
+            &Format::TwoVsTwo {
+                team_of: [0, 0, 1, 1],
+            },
+        );
+        assert!(teams.contains(&STAGES.to_string()), "{teams}");
     }
 
     #[test]

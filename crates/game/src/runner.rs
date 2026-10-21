@@ -464,6 +464,9 @@ fn human_input(
             if stick == Vec2::ZERO {
                 stick = pad.left_stick();
             }
+            if stick == Vec2::ZERO {
+                stick = pad.dpad();
+            }
         }
         // A keyboard seat always has a working device; a pad-only seat without its pad is lost.
         None if !keyboard => input.set(Button::CONTROLLER_LOST, true),

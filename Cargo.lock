@@ -3012,6 +3012,7 @@ dependencies = [
  "fluent-syntax",
  "kira",
  "minigame-firefly-catch",
+ "minigame-lantern-echo",
  "minigame-lantern-push",
  "minigame-quick-draw",
  "minigame-registry",
@@ -3974,6 +3975,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "minigame-lantern-echo"
+version = "0.1.0"
+dependencies = [
+ "sim-check",
+ "sim-core",
+]
+
+[[package]]
 name = "minigame-lantern-push"
 version = "0.1.0"
 dependencies = [
@@ -3994,6 +4003,7 @@ name = "minigame-registry"
 version = "0.1.0"
 dependencies = [
  "minigame-firefly-catch",
+ "minigame-lantern-echo",
  "minigame-lantern-push",
  "minigame-quick-draw",
  "sim-board",
@@ -5805,6 +5815,7 @@ dependencies = [
  "clap",
  "libc",
  "minigame-firefly-catch",
+ "minigame-lantern-echo",
  "minigame-lantern-push",
  "minigame-quick-draw",
  "minigame-registry",

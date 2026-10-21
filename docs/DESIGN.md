@@ -53,6 +53,8 @@ Items, shops, event spaces, bonus stars, last-5-turns events, **duels (1v1, need
   - **Lantern Push:** sumo knockoff on a shrinking platform. Proves physics, knockback and rollback. A dashes into rivals, B braces (heavy for a moment, so a dash bounces off). The platform shrinks from 8 s to 45 s; last player or team standing wins, and at the 75 s limit survivors share the win. In 1v3 the solo is bigger and heavier.
   - **Firefly Catch:** chase fleeing fireflies. Proves spawning, simple AI-driven objects, particles and scoring. A swings a net, B dashes. A startled firefly sprints and hops over its chaser, which tires it; tired fireflies are slow and easy to net. A ring on the ground in front of each player shows exactly where the net catches, and each firefly's ground spot pulses while it's tired. Golden fireflies are worth 3; in 1v3 the solo's catches count triple.
   - **Quick Draw:** press when the lantern lights. Proves reflex/timing games and is the first minigame used to build the pipeline.
+- **Minigames since the vertical slice:**
+  - **Lantern Echo:** a memory race. Each player's lane ends in a diamond of four lanterns that play a sequence; the player repeats it with flicks of the stick (or the d-pad) to move a step, and the next sequence is one longer (3 up to 8). A wrong flick stumbles you and the sequence plays again. Every seat has its own sequence. First to the end of the lane (6 steps) wins; at 75 s the furthest along wins. Teams add their steps up (6 per member, but 17 for the 1v3 trio, which bots showed was fairer than 18), and a member can take up to 9 to carry the others. All four formats.
 - **Ideas for more minigames** are collected in [MINIGAME_IDEAS.md](MINIGAME_IDEAS.md).
 - **Free-play mode:** play any minigame directly from a menu. The same entry point is available from the CLI for development, with N bots.
 
@@ -63,13 +65,14 @@ Items, shops, event spaces, bonus stars, last-5-turns events, **duels (1v1, need
 - **Screens:** title (continue, when there's a save / board game / free play / play online / quit; play online opens host a board game / host the saved game / host free play / join a game / back) → join → board ↔ minigames → results → title. Free play goes join → minigame picker → minigame, and B after a result returns to the picker. Join online goes through a connect screen (type or d-pad-dial the host's address) to the same join screen.
 - **Picking a saved game up again** ("Continue", or "Host the saved game" online) opens the same join screen with the save's seats: each seat keeps its character, A takes the next seat a person played (then the bots'), left/right moves to another free seat instead of changing character, and seats nobody takes are bots. The length is the save's; bots and the pause setting start as saved and the host can still change them.
 - **Online joining:** the join screen's rules are `net::lobby` on every machine; on the couch this machine is simply the host. Online, the host's lobby is the real one: each machine numbers its own controllers, sends what they press, and shows the lobby the host sends back. Only the host's players change bots, rounds and the pause setting, and press Start; clients see the host's choices. The host's join screen lists the addresses friends can join at (this PC, LAN, Tailscale).
-- **Every minigame starts the same way** (`game/src/intro.rs`): an instruction card (title, format, goal, how to play, controls) that waits until every human has pressed A, then a 3-2-1 countdown of `sim_core::COUNTDOWN_TICKS` in which nobody can act. The simulation doesn't tick while the card is up. A minigame only supplies Fluent keys (`{id}-title`, `-goal`, `-how`, `-a`, and optionally `-b`, `-stick`, `-goal-teams`, `-goal-solo`); a test checks the required ones. "Play again" in free play skips the card on the couch. Online, each A press travels as a protocol message relayed by the host, and a replay is a new launch that shows the card again, so remote players aren't caught out by the host's A.
+- **Every minigame starts the same way** (`game/src/intro.rs`): an instruction card (title, format, goal, how to play, controls) that waits until every human has pressed A, then a 3-2-1 countdown of `sim_core::COUNTDOWN_TICKS` in which nobody can act. The simulation doesn't tick while the card is up. A minigame only supplies Fluent keys (`{id}-title`, `-goal`, `-how`, at least one of `-stick`, `-a` and `-b` for the controls it uses, and optionally `-goal-teams`, `-goal-solo`); a test checks the required ones. "Play again" in free play skips the card on the couch. Online, each A press travels as a protocol message relayed by the host, and a replay is a new launch that shows the card again, so remote players aren't caught out by the host's A.
 - **Bots** fill empty seats, set by the host, with 2–3 difficulty levels. A bot is a **virtual controller**: a pure function `bot_input(state, seat, difficulty) -> Input` whose output is sent exactly like a human's. The simulation never knows a seat is a bot.
 - **Controller disconnects** are local events and never break the network session. The machine that owns the seat sends a `CONTROLLER_LOST` flag as that seat's input, so every machine sees the loss on the same tick. The setting "Pause when a controller disconnects" is a host setting on the join screen (`--pause-on-controller-lost` sets where it starts), defaults to **Off**, and travels with the lobby, so every machine runs minigames with the same `RunConfig`:
   - **Off:** that seat's input goes neutral and its panel says "controller lost" on every screen (the placeholder for a "🎮✕ P2" badge).
   - **On:** the minigame pauses for everyone until the controller is back, then resumes. It never restarts.
 
   The board phase simply waits for the player whose turn it is.
+- **The d-pad** feeds a seat's stick while the stick itself is centred, so direction-only minigames (Lantern Echo) play well on either.
 - **Telling players apart:** each player has a colour **plus** a number and shape (P1 ●, P2 ▲, P3 ■, P4 ◆).
 
 ### 3.5 Characters and customization
@@ -103,7 +106,8 @@ crates/
                 #   menus.rs, online.rs (hosting/joining), intro.rs (instruction card), one view module per minigame,
                 #   characters.rs, particles.rs, audio.rs + sfx.rs, quality.rs, i18n.rs
   tools/        # headless CLI: `check` (all quality bars), `net-check` (online bar over localhost UDP),
-                #   `bots` (bot-only matches), `board` (bot-only board games)
+                #   `bots` (bot-only matches in any format, P1 optionally at another difficulty),
+                #   `board` (bot-only board games)
 ```
 
 ### 4.2 Simulation outside Bevy ([ADR 0001](adr/0001-simulation-outside-bevy.md))

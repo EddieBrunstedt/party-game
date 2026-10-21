@@ -132,6 +132,7 @@ format-versus = { $left }  vs  { $right }
 minigame-quick-draw = Quick Draw
 minigame-lantern-push = Lantern Push
 minigame-firefly-catch = Firefly Catch
+minigame-lantern-echo = Lantern Echo
 
 ## Quick Draw
 quick-draw-title = QUICK DRAW
@@ -178,6 +179,21 @@ firefly-catch-goal-teams = Team scores add up!
 firefly-catch-goal-solo = { $player }'s catches count triple!
 firefly-catch-go = GO!
 firefly-catch-triple-tag = {"  "}x3
+
+## Lantern Echo
+lantern-echo-title = LANTERN ECHO
+lantern-echo-how = Your lanterns light up one after another: flick the stick the same way, in the same order. Each right echo moves you a step, and the next sequence adds one more. A wrong flick costs you time.
+lantern-echo-stick = repeat the lanterns (or the d-pad)
+lantern-echo-goal = First to the end of the lane wins!
+lantern-echo-goal-teams = Your team's steps add up: 6 each to finish!
+lantern-echo-goal-solo = { $player } needs 6 steps; the other three need 17 between them!
+lantern-echo-go = GO!
+lantern-echo-watch = watch...
+lantern-echo-echo = echo { $entered }/{ $length }
+lantern-echo-right = right!
+lantern-echo-slip = WRONG
+lantern-echo-done = done!
+lantern-echo-team = { $players }  { $steps }/{ $needed }
 
 ## Board
 board-turn-order = Turn order

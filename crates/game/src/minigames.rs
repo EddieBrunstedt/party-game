@@ -3,15 +3,21 @@
 
 use bevy::prelude::*;
 use minigame_firefly_catch::FireflyCatch;
+use minigame_lantern_echo::LanternEcho;
 use minigame_lantern_push::LanternPush;
 use minigame_quick_draw::QuickDraw;
 use sim_core::{Minigame, MinigameEntry};
 
 use crate::runner::MinigamePlugin;
-use crate::{firefly_catch, lantern_push, quick_draw};
+use crate::{firefly_catch, lantern_echo, lantern_push, quick_draw};
 
 /// Ids of the minigames this client can show.
-pub const SHOWN: &[&str] = &[QuickDraw::ID, LanternPush::ID, FireflyCatch::ID];
+pub const SHOWN: &[&str] = &[
+    QuickDraw::ID,
+    LanternPush::ID,
+    FireflyCatch::ID,
+    LanternEcho::ID,
+];
 
 /// The registry entries this client can show, in registry order: what the board may pick from.
 pub fn shown_entries() -> Vec<MinigameEntry> {
@@ -33,6 +39,8 @@ impl Plugin for MinigamesPlugin {
             lantern_push::LanternPushViewPlugin,
             MinigamePlugin::<FireflyCatch>::default(),
             firefly_catch::FireflyCatchViewPlugin,
+            MinigamePlugin::<LanternEcho>::default(),
+            lantern_echo::LanternEchoViewPlugin,
         ));
     }
 }

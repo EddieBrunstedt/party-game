@@ -6,6 +6,7 @@ mod firefly_catch;
 mod flow;
 mod i18n;
 mod intro;
+mod lantern_echo;
 mod lantern_push;
 mod menus;
 mod minigames;

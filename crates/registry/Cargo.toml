@@ -9,6 +9,7 @@ sim-core.workspace = true
 minigame-quick-draw.workspace = true
 minigame-lantern-push.workspace = true
 minigame-firefly-catch.workspace = true
+minigame-lantern-echo.workspace = true
 
 [dev-dependencies]
 sim-board.workspace = true
