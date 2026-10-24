@@ -486,6 +486,31 @@ mod tests {
     }
 
     #[test]
+    fn triple_jump_card_matches_the_rules() {
+        use minigame_triple_jump::{ATTEMPTS, BEST_ANGLE, QUALIFIERS, TEAM_ATTEMPTS};
+        assert_eq!(
+            (ATTEMPTS, TEAM_ATTEMPTS),
+            (3, 4),
+            "the cards say three and four"
+        );
+        assert!(goal("triple-jump", &Format::FreeForAll).contains("Three attempts"));
+        let teams = goal(
+            "triple-jump",
+            &Format::TwoVsTwo {
+                team_of: [0, 0, 1, 1],
+            },
+        );
+        assert!(teams.contains("Four attempts"), "{teams}");
+        assert_eq!(QUALIFIERS, 2, "the card says two of them");
+        let solo = goal("triple-jump", &Format::OneVsThree { solo: Seat(0) });
+        assert!(
+            solo.contains("two of them") && solo.contains("three attempts"),
+            "{solo}"
+        );
+        assert!(tr!("triple-jump-how").contains(&format!("{} degrees", BEST_ANGLE / 10)));
+    }
+
+    #[test]
     fn tabletop_rally_card_matches_the_rules() {
         use minigame_tabletop_rally::WIN_POINTS;
         for key in [

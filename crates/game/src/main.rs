@@ -27,6 +27,7 @@ mod scenery;
 mod sfx;
 mod sky_lanterns;
 mod tabletop_rally;
+mod triple_jump;
 
 use std::path::PathBuf;
 

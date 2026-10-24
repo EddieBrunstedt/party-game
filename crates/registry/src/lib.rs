@@ -12,6 +12,7 @@ use minigame_musical_stools::MusicalStools;
 use minigame_quick_draw::QuickDraw;
 use minigame_sky_lanterns::SkyLanterns;
 use minigame_tabletop_rally::TabletopRally;
+use minigame_triple_jump::TripleJump;
 use sim_core::MinigameEntry;
 
 pub const ALL: &[MinigameEntry] = &[
@@ -26,6 +27,7 @@ pub const ALL: &[MinigameEntry] = &[
     MinigameEntry::of::<HedgeMaze>(),
     MinigameEntry::of::<LanternDerby>(),
     MinigameEntry::of::<TabletopRally>(),
+    MinigameEntry::of::<TripleJump>(),
 ];
 
 pub fn find(id: &str) -> Option<&'static MinigameEntry> {

@@ -13,12 +13,13 @@ use minigame_musical_stools::MusicalStools;
 use minigame_quick_draw::QuickDraw;
 use minigame_sky_lanterns::SkyLanterns;
 use minigame_tabletop_rally::TabletopRally;
+use minigame_triple_jump::TripleJump;
 use sim_core::{Minigame, MinigameEntry};
 
 use crate::runner::MinigamePlugin;
 use crate::{
     firefly_catch, hedge_maze, lantern_derby, lantern_echo, lantern_lottery, lantern_push,
-    lantern_tower, musical_stools, quick_draw, sky_lanterns, tabletop_rally,
+    lantern_tower, musical_stools, quick_draw, sky_lanterns, tabletop_rally, triple_jump,
 };
 
 /// Ids of the minigames this client can show.
@@ -34,6 +35,7 @@ pub const SHOWN: &[&str] = &[
     HedgeMaze::ID,
     LanternDerby::ID,
     TabletopRally::ID,
+    TripleJump::ID,
 ];
 
 /// The registry entries this client can show, in registry order: what the board may pick from.
@@ -94,6 +96,10 @@ impl Plugin for MinigamesPlugin {
             (
                 MinigamePlugin::<TabletopRally>::default(),
                 tabletop_rally::TabletopRallyViewPlugin,
+            ),
+            (
+                MinigamePlugin::<TripleJump>::default(),
+                triple_jump::TripleJumpViewPlugin,
             ),
         ));
     }

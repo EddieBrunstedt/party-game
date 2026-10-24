@@ -140,6 +140,7 @@ minigame-musical-stools = Musical Stools
 minigame-hedge-maze = Hedge Maze
 minigame-lantern-derby = Lantern Derby
 minigame-tabletop-rally = Tabletop Rally
+minigame-triple-jump = Triple Jump
 
 ## Quick Draw
 quick-draw-title = QUICK DRAW
@@ -376,6 +377,42 @@ tabletop-rally-out-caught = caught!
 tabletop-rally-points = rounds { $points }/{ $goal }
 tabletop-rally-getaway = getaway
 tabletop-rally-chaser = chaser
+
+triple-jump-title = TRIPLE JUMP
+triple-jump-how = Mash A to run up: speed builds slowly and fades slowly, so keep a steady pace all the way down the runway (a burst at the end won't get you far). Press B before the line to take off and keep holding it: the needle climbs while you hold, and letting go jumps. 45 degrees is best. Then hop, step, jump: press B again just as you land, hold, and let go. Step over the line and it's a foul; press too early in the air, or too late, and you stumble.
+triple-jump-a = mash to run (the coach: lock the angle; the wind: blow)
+triple-jump-b = take off and land: hold for the angle, let go to jump (the wind: gust)
+triple-jump-stick = the wind moves its fan up and down the lanes
+triple-jump-goal = Three attempts each: the longest jump wins!
+triple-jump-goal-teams = You share a jumper and swap jobs each attempt: the runner mashes A and presses B to jump, the coach presses A to stop the angle needle. Four attempts: the longest jump wins!
+triple-jump-goal-solo = { $player } jumps first, alone, and that mark is the line. Then { $player } is the wind: the stick moves a fan between your lanes, mashing A blows a headwind and B is a gust. The three win if two of them land past the line in three attempts each!
+triple-jump-go = Go!
+triple-jump-attempt = Attempt { $attempt } of { $attempts }
+triple-jump-sets = { $player } jumps first and sets the mark
+triple-jump-mark-set = { $player } set the mark: { $metres } m
+triple-jump-chase = Past { $player }'s { $metres } m: { $count } of { $needed }
+triple-jump-leader = Longest so far: { $names }, { $metres } m
+triple-jump-no-marks = No marks yet
+triple-jump-metres = { $metres } m
+triple-jump-stumble = Stumbled: { $metres } m
+triple-jump-foul = Foul!
+triple-jump-foul-short = foul
+triple-jump-early = Too early!
+triple-jump-perfect = Perfect!
+triple-jump-good = Good
+triple-jump-ok = OK
+triple-jump-angle = { $angle } deg
+triple-jump-best = best { $metres } m
+triple-jump-no-mark = no mark yet
+triple-jump-runner = running
+triple-jump-coach = coaching: press A
+triple-jump-wind = the wind
+triple-jump-mark = the mark: { $metres } m
+triple-jump-line = { $player }: { $metres } m
+triple-jump-solo-first = jumping first
+triple-jump-gust-ready = gust ready (B)
+triple-jump-gust-wait = gust in { $seconds } s
+triple-jump-past = past the mark!
 
 ## Board
 board-turn-order = Turn order

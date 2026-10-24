@@ -17,6 +17,7 @@ minigame-musical-stools.workspace = true
 minigame-hedge-maze.workspace = true
 minigame-lantern-derby.workspace = true
 minigame-tabletop-rally.workspace = true
+minigame-triple-jump.workspace = true
 minigame-registry.workspace = true
 sim-board.workspace = true
 net.workspace = true

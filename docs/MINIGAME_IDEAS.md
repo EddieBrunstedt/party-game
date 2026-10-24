@@ -18,7 +18,7 @@ In his words first, then a note on how each might fit.
 
 > "And one just like the horse racing in tivoli where you need to get a ball in to move your piece forward!"
 
-- **Button mash / fastest press race:** a simple race where pressing the right button fast moves you forward. Close to Quick Draw's reflex idea, but sustained. Easy for bots. All formats.
+- **Button mash / fastest press race** (taken: Triple Jump, see ROADMAP.md, the mash is its run-up)**:** a simple race where pressing the right button fast moves you forward. Close to Quick Draw's reflex idea, but sustained. Easy for bots. All formats.
 - **Brainy race:** a race where you have to think a bit to reach the goal (route choices, switches, small puzzles along the track).
 - **Obstacle course:** run, jump and dodge through a course. Needs simple platforming physics in `sim_core::physics` (heightfields, gravity).
 - **Memory race** (taken: Lantern Echo, see ROADMAP.md)**:** to move on, repeat a sequence (Simon-style) you were shown. A wrong press costs time. Sequences come from the seeded RNG, so everyone gets the same one.
