@@ -36,7 +36,7 @@ In his words first, then a note on how each might fit.
 
 - **Maze race** (taken: Hedge Maze, see ROADMAP.md, played in the dark as below)**:** everyone in the same maze (or mirrored copies), first out wins. Mazes are generated from the seed.
 - **Spot the right picture:** several pictures and one is right (the odd one out, the one matching a description, the one that changed). Pick it first. Needs picture content.
-- **Pick the right solution:** a problem with several candidate answers. Bots need a tuned chance of being right per difficulty.
+- **Pick the right solution** (taken: Puzzle Buzzer, see ROADMAP.md, as buzzer answering)**:** a problem with several candidate answers. Bots need a tuned chance of being right per difficulty.
 
 ### Silliness
 

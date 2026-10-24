@@ -9,6 +9,7 @@ use minigame_lantern_lottery::LanternLottery;
 use minigame_lantern_push::LanternPush;
 use minigame_lantern_tower::LanternTower;
 use minigame_musical_stools::MusicalStools;
+use minigame_puzzle_buzzer::PuzzleBuzzer;
 use minigame_quick_draw::QuickDraw;
 use minigame_sky_lanterns::SkyLanterns;
 use minigame_tabletop_rally::TabletopRally;
@@ -28,6 +29,7 @@ pub const ALL: &[MinigameEntry] = &[
     MinigameEntry::of::<LanternDerby>(),
     MinigameEntry::of::<TabletopRally>(),
     MinigameEntry::of::<TripleJump>(),
+    MinigameEntry::of::<PuzzleBuzzer>(),
 ];
 
 pub fn find(id: &str) -> Option<&'static MinigameEntry> {

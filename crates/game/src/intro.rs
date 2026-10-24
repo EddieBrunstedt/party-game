@@ -511,6 +511,29 @@ mod tests {
     }
 
     #[test]
+    fn puzzle_buzzer_card_matches_the_rules() {
+        use minigame_puzzle_buzzer::{ANSWER_TICKS, GOAL, SOLO_GOAL, TRIO_GOAL};
+        assert_eq!(GOAL, 5, "the cards say 5");
+        assert!(goal("puzzle-buzzer", &Format::FreeForAll).contains("First to 5"));
+        let teams = goal(
+            "puzzle-buzzer",
+            &Format::TwoVsTwo {
+                team_of: [0, 0, 1, 1],
+            },
+        );
+        assert!(teams.contains("to 5"), "{teams}");
+        assert_eq!((SOLO_GOAL, TRIO_GOAL), (3, 5), "the card says 3 and 5");
+        let solo = goal("puzzle-buzzer", &Format::OneVsThree { solo: Seat(0) });
+        assert!(
+            solo.contains("needs 3") && solo.contains("need 5"),
+            "{solo}"
+        );
+        assert!(tr!("puzzle-buzzer-goal-line-solo").contains("needs 3, the three need 5"));
+        assert_eq!(ANSWER_TICKS as u32, 10 * TICK_HZ);
+        assert!(tr!("puzzle-buzzer-how").contains("10 seconds"));
+    }
+
+    #[test]
     fn tabletop_rally_card_matches_the_rules() {
         use minigame_tabletop_rally::WIN_POINTS;
         for key in [

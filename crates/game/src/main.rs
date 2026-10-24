@@ -19,6 +19,7 @@ mod online;
 mod palette;
 mod particles;
 mod perf;
+mod puzzle_buzzer;
 mod quality;
 mod quick_draw;
 mod runner;

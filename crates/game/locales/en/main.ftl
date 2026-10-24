@@ -141,6 +141,7 @@ minigame-hedge-maze = Hedge Maze
 minigame-lantern-derby = Lantern Derby
 minigame-tabletop-rally = Tabletop Rally
 minigame-triple-jump = Triple Jump
+minigame-puzzle-buzzer = Puzzle Buzzer
 
 ## Quick Draw
 quick-draw-title = QUICK DRAW
@@ -413,6 +414,34 @@ triple-jump-solo-first = jumping first
 triple-jump-gust-ready = gust ready (B)
 triple-jump-gust-wait = gust in { $seconds } s
 triple-jump-past = past the mark!
+
+puzzle-buzzer-title = PUZZLE BUZZER
+puzzle-buzzer-how = Each puzzle has four answers: up, right, down and left. Point the stick at one and press A to lock it in (nobody sees where you point). The first right answer takes the puzzle. A wrong answer is out of that puzzle, and everyone sees it was wrong. You have 10 seconds, and the puzzles get harder as you go.
+puzzle-buzzer-stick = point at an answer (or the d-pad)
+puzzle-buzzer-a = lock in your answer
+puzzle-buzzer-goal = First to 5 puzzles wins!
+puzzle-buzzer-goal-teams = Each puzzle has two halves, one for each partner. Your team takes it once you've both locked in your half right, but one wrong half puts you both out of that puzzle. First team to 5 wins!
+puzzle-buzzer-goal-solo = { $player } answers alone and needs 3 puzzles. The other three share one buzzer: one wrong answer from any of you puts all three out of that puzzle, and your buzzers open a moment after { $player }'s. You need 5 puzzles between you!
+puzzle-buzzer-count = How many like the one in the middle?
+puzzle-buzzer-sum = What does it make?
+puzzle-buzzer-sequence = What comes next?
+puzzle-buzzer-odd = Which shape is different?
+puzzle-buzzer-ladder = Which rope leads to the lantern?
+puzzle-buzzer-scales = Which is heaviest?
+puzzle-buzzer-puzzle = Puzzle { $number }
+puzzle-buzzer-goal-line = First to { $goal }
+puzzle-buzzer-goal-line-solo = Solo needs 3, the three need 5
+puzzle-buzzer-left = { $secs }
+puzzle-buzzer-took = { $players } got it!
+puzzle-buzzer-all-wrong = All wrong!
+puzzle-buzzer-time = Time's up!
+puzzle-buzzer-points = { $points }/{ $goal }
+puzzle-buzzer-thinking = thinking...
+puzzle-buzzer-wait = wait...
+puzzle-buzzer-locked = locked in
+puzzle-buzzer-wrong = wrong!
+puzzle-buzzer-out = out
+puzzle-buzzer-got-it = got it!
 
 ## Board
 board-turn-order = Turn order

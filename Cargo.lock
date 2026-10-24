@@ -3019,6 +3019,7 @@ dependencies = [
  "minigame-lantern-push",
  "minigame-lantern-tower",
  "minigame-musical-stools",
+ "minigame-puzzle-buzzer",
  "minigame-quick-draw",
  "minigame-registry",
  "minigame-sky-lanterns",
@@ -4039,6 +4040,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "minigame-puzzle-buzzer"
+version = "0.1.0"
+dependencies = [
+ "sim-check",
+ "sim-core",
+]
+
+[[package]]
 name = "minigame-quick-draw"
 version = "0.1.0"
 dependencies = [
@@ -4058,6 +4067,7 @@ dependencies = [
  "minigame-lantern-push",
  "minigame-lantern-tower",
  "minigame-musical-stools",
+ "minigame-puzzle-buzzer",
  "minigame-quick-draw",
  "minigame-sky-lanterns",
  "minigame-tabletop-rally",
@@ -5902,6 +5912,7 @@ dependencies = [
  "minigame-lantern-push",
  "minigame-lantern-tower",
  "minigame-musical-stools",
+ "minigame-puzzle-buzzer",
  "minigame-quick-draw",
  "minigame-registry",
  "minigame-sky-lanterns",

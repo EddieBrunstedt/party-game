@@ -22,6 +22,7 @@ minigame-hedge-maze.workspace = true
 minigame-lantern-derby.workspace = true
 minigame-tabletop-rally.workspace = true
 minigame-triple-jump.workspace = true
+minigame-puzzle-buzzer.workspace = true
 clap.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
