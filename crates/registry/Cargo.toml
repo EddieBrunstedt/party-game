@@ -22,6 +22,7 @@ minigame-puzzle-buzzer.workspace = true
 minigame-lantern-masquerade.workspace = true
 minigame-lantern-flail.workspace = true
 minigame-lantern-run.workspace = true
+minigame-lantern-ball.workspace = true
 
 [dev-dependencies]
 sim-board.workspace = true

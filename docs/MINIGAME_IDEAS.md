@@ -110,7 +110,7 @@ Asked what made them boring, the developer picked too little chaos, too little c
 
 - **Lantern flail** (taken: Lantern Flail, see ROADMAP.md)**:** drag a lantern on a rope and swing it into rivals on a raft.
 - **Tipping raft:** everyone on one raft balanced on a pivot; your weight tilts it and you slide downhill, with crates and barrels rolling about and a ground-pound to tip it hard. Last one dry wins. Needs torque from masses and sliding on a slope; another ring-out like Lantern Push.
-- **Bumper ball:** top-down football with a huge ball shoved, bounced and dashed into goals (2v2 natural, four goals in free-for-all, a big keeper in 1v3). Cheapest: the existing circles plus walls.
+- **Bumper ball** (taken: Lantern Ball, see ROADMAP.md)**:** top-down football with a huge ball shoved, bounced and dashed into goals (2v2 natural, four goals in free-for-all, a big keeper in 1v3). Cheapest: the existing circles plus walls.
 - **Lantern siege:** knock down each other's block towers with catapult shots or boulders, Angry Birds style. Needs a rigid-body box solver (custom, or avian3d with enhanced determinism, ADR 0006): a big job on its own.
 
 

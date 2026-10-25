@@ -145,6 +145,7 @@ minigame-puzzle-buzzer = Puzzle Buzzer
 minigame-lantern-masquerade = Lantern Masquerade
 minigame-lantern-flail = Lantern Flail
 minigame-lantern-run = Lantern Run
+minigame-lantern-ball = Lantern Ball
 
 ## Quick Draw
 quick-draw-title = QUICK DRAW
@@ -525,6 +526,36 @@ lantern-run-throttle = flat out!
 lantern-run-meter = throttle
 lantern-run-room = room
 lantern-run-slipstream = slipstream
+
+## Lantern Ball
+lantern-ball-title = LANTERN BALL
+lantern-ball-how = Run into the big lantern ball to shove it, dash into it to send it flying, or hold B to charge a kick and let go to kick it where you face. Everyone can see you charging, and it slows you down: dash into a rival who's charging to knock them down. Only the ball may go in the half-circle in front of a goal. A second ball drops in after 30 seconds!
+lantern-ball-stick = run
+lantern-ball-a = dash: sends the ball flying, knocks rivals down
+lantern-ball-b = hold to charge a kick, let go to kick
+lantern-ball-goal = Guard your goal and score in everyone else's. Every goal you let in costs one of your 5 lives; lose them all and your goal is walled up. From 30 seconds the goals slowly widen, but each goal you score narrows yours again. The last one left, or the most lives after 75 seconds, wins!
+lantern-ball-goal-teams = Guard your team's goal and score in theirs. Every goal you let in costs your team one of its 5 lives; lose them all and you lose. From 30 seconds the goals slowly widen, but each goal you score narrows yours again. Most lives after 75 seconds wins!
+lantern-ball-goal-solo = { $player } is a giant keeper guarding a wide goal. The three win with 3 goals within 60 seconds, but every goal the keeper puts in their small goal takes one back!
+lantern-ball-go = KICK OFF!
+lantern-ball-scored-on = { $by } scored on { $player }!
+lantern-ball-scores = { $by } scores!
+lantern-ball-own-goal = Own goal by { $player }!
+lantern-ball-goal-against = Goal against { $player }!
+lantern-ball-taken-back = The keeper takes one back!
+lantern-ball-is-out = { $player } is out!
+lantern-ball-second-ball = SECOND BALL!
+lantern-ball-sudden-death = SUDDEN DEATH
+lantern-ball-sudden-death-sub = Level! The next goal decides.
+lantern-ball-trio-score = the three { $goals }/{ $goal }
+lantern-ball-lives = lives { $lives }/{ $max }
+lantern-ball-goals = { $goals ->
+    [one] 1 goal
+   *[other] { $goals } goals
+}
+lantern-ball-out = out!
+lantern-ball-stunned = knocked down!
+lantern-ball-charging = charging!
+lantern-ball-everyone = Everyone ties!
 
 ## Board
 board-turn-order = Turn order

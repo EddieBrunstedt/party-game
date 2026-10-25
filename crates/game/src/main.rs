@@ -7,6 +7,7 @@ mod flow;
 mod hedge_maze;
 mod i18n;
 mod intro;
+mod lantern_ball;
 mod lantern_derby;
 mod lantern_echo;
 mod lantern_flail;

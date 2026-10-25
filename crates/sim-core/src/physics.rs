@@ -1,5 +1,6 @@
 //! Simple deterministic 2D physics for minigames (ADR 0006): circles moving on the arena floor,
-//! pushing each other apart and trading momentum, and slack ropes between them. Everything is plain `f32` arithmetic plus
+//! pushing each other apart and trading momentum, slack ropes between them, and straight walls and
+//! fixed posts they bounce off. Everything is plain `f32` arithmetic plus
 //! `sqrt` (an exact IEEE operation); anything transcendental goes through [`crate::math`].
 //!
 //! The floor plane uses `x` to the right and `y` towards the camera, so a renderer maps
@@ -307,6 +308,60 @@ pub fn tether(a: &mut Body, b: &mut Body, length: f32) -> bool {
     true
 }
 
+/// Keep a body on the inner side of a straight wall: the line of points `p` with
+/// `p.dot(normal) == offset`, where `normal` is a unit vector pointing out of the arena. A body
+/// pushing through is put back and bounces. Returns the speed it hit the wall with, if it touched.
+pub fn bounce_off_wall(
+    body: &mut Body,
+    normal: Vec2,
+    offset: f32,
+    restitution: f32,
+) -> Option<f32> {
+    let depth = body.pos.dot(normal) - offset + body.radius;
+    if depth <= 0.0 {
+        return None;
+    }
+    body.pos -= normal * depth;
+    let into = body.vel.dot(normal);
+    if into > 0.0 {
+        body.vel -= normal * ((1.0 + restitution) * into);
+        Some(into)
+    } else {
+        Some(0.0)
+    }
+}
+
+/// Push a body out of an immovable circle (a post or a bumper) and bounce it. The contact's
+/// normal points from the circle to the body.
+pub fn bounce_off_circle(
+    body: &mut Body,
+    center: Vec2,
+    radius: f32,
+    restitution: f32,
+) -> Option<Contact> {
+    let delta = body.pos - center;
+    let reach = body.radius + radius;
+    let dist_sq = delta.length_squared();
+    if dist_sq >= reach * reach {
+        return None;
+    }
+    let dist = dist_sq.sqrt();
+    let normal = if dist > 1e-6 {
+        delta * (1.0 / dist)
+    } else {
+        Vec2::new(1.0, 0.0)
+    };
+    body.pos = center + normal * reach;
+    let into = -body.vel.dot(normal);
+    let impulse = if into > 0.0 {
+        body.vel += normal * ((1.0 + restitution) * into);
+        into * body.mass
+    } else {
+        0.0
+    };
+    Some(Contact { normal, impulse })
+}
+
 /// The point on the segment from `a` to `b` closest to `p`, and how far along it lies (0 at `a`,
 /// 1 at `b`).
 pub fn closest_on_segment(a: Vec2, b: Vec2, p: Vec2) -> (Vec2, f32) {
@@ -345,6 +400,29 @@ mod tests {
         // The outward speed is shared out; the speed across the rope stays.
         assert!((b.vel.x - 1.0).abs() < 1e-5 && (a.vel.x - 1.0).abs() < 1e-5);
         assert_eq!(b.vel.y, 5.0);
+    }
+
+    #[test]
+    fn walls_put_bodies_back_and_bounce_them() {
+        let normal = Vec2::new(0.0, 1.0);
+        let mut body = Body::new(Vec2::new(1.0, 4.8), 0.5, 1.0);
+        body.vel = Vec2::new(1.0, 2.0);
+        assert_eq!(bounce_off_wall(&mut body, normal, 5.0, 0.5), Some(2.0));
+        assert!((body.pos.y - 4.5).abs() < 1e-5);
+        assert_eq!(body.vel, Vec2::new(1.0, -1.0));
+        let mut clear = Body::new(Vec2::new(0.0, 4.0), 0.5, 1.0);
+        assert_eq!(bounce_off_wall(&mut clear, normal, 5.0, 0.5), None);
+    }
+
+    #[test]
+    fn circles_push_out_and_bounce() {
+        let mut body = Body::new(Vec2::new(-0.9, 0.0), 0.5, 2.0);
+        body.vel = Vec2::new(3.0, 0.0);
+        let contact = bounce_off_circle(&mut body, Vec2::ZERO, 0.5, 1.0).unwrap();
+        assert_eq!(contact.normal, Vec2::new(-1.0, 0.0));
+        assert_eq!(contact.impulse, 6.0);
+        assert!((body.pos.x + 1.0).abs() < 1e-5);
+        assert_eq!(body.vel, Vec2::new(-3.0, 0.0));
     }
 
     #[test]

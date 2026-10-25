@@ -581,6 +581,39 @@ mod tests {
     }
 
     #[test]
+    fn lantern_ball_card_matches_the_rules() {
+        use minigame_lantern_ball::{
+            LIVES, PLAY_TICKS, SECOND_BALL_TICK, SOLO_TICKS, TRIO_GOAL, WIDEN_FROM,
+        };
+        assert_eq!(LIVES, 5, "the cards say 5 lives");
+        assert_eq!(
+            WIDEN_FROM,
+            30 * TICK_HZ,
+            "the cards say the goals widen from 30 seconds"
+        );
+        assert_eq!(PLAY_TICKS, 75 * TICK_HZ);
+        assert_eq!(SOLO_TICKS, 60 * TICK_HZ);
+        assert_eq!(TRIO_GOAL, 3);
+        assert_eq!(SECOND_BALL_TICK, 30 * TICK_HZ);
+        assert!(tr!("lantern-ball-how").contains("after 30 seconds"));
+        let teams = Format::TwoVsTwo {
+            team_of: [0, 0, 1, 1],
+        };
+        for format in [Format::FreeForAll, teams] {
+            let goal = goal("lantern-ball", &format);
+            assert!(
+                goal.contains("5 lives") && goal.contains("75 seconds") && goal.contains("From 30"),
+                "{goal}"
+            );
+        }
+        let solo = goal("lantern-ball", &Format::OneVsThree { solo: Seat(0) });
+        assert!(
+            solo.contains("3 goals") && solo.contains("60 seconds"),
+            "{solo}"
+        );
+    }
+
+    #[test]
     fn lantern_run_card_matches_the_rules() {
         use minigame_lantern_run::BARGE_TICKS;
         assert_eq!(BARGE_TICKS, 75 * TICK_HZ, "the 1v3 card says 75 seconds");

@@ -17,6 +17,7 @@ use minigame_lantern_lottery::LanternLottery;
 use minigame_lantern_masquerade::LanternMasquerade;
 use minigame_lantern_push::LanternPush;
 use minigame_lantern_run::LanternRun;
+use minigame_lantern_ball::LanternBall;
 use minigame_lantern_tower::LanternTower;
 use minigame_musical_stools::MusicalStools;
 use minigame_puzzle_buzzer::PuzzleBuzzer;
@@ -175,6 +176,7 @@ fn checker(id: &str) -> Option<fn(u64) -> Result<(), String>> {
         LanternMasquerade::ID => Some(sim_check::check_all::<LanternMasquerade>),
         LanternFlail::ID => Some(sim_check::check_all::<LanternFlail>),
         LanternRun::ID => Some(sim_check::check_all::<LanternRun>),
+        LanternBall::ID => Some(sim_check::check_all::<LanternBall>),
         _ => None,
     }
 }
@@ -201,6 +203,7 @@ fn net_checker(id: &str) -> Option<NetChecker> {
         LanternMasquerade::ID => Some(play_over_udp::<LanternMasquerade>),
         LanternFlail::ID => Some(play_over_udp::<LanternFlail>),
         LanternRun::ID => Some(play_over_udp::<LanternRun>),
+        LanternBall::ID => Some(play_over_udp::<LanternBall>),
         _ => None,
     }
 }
@@ -272,6 +275,7 @@ fn checker_setups(id: &str, seed: u64) -> Vec<sim_check::Setup> {
         LanternMasquerade::ID => sim_check::setups::<LanternMasquerade>(seed),
         LanternFlail::ID => sim_check::setups::<LanternFlail>(seed),
         LanternRun::ID => sim_check::setups::<LanternRun>(seed),
+        LanternBall::ID => sim_check::setups::<LanternBall>(seed),
         _ => Vec::new(),
     }
 }
