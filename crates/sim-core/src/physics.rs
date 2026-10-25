@@ -1,5 +1,5 @@
 //! Simple deterministic 2D physics for minigames (ADR 0006): circles moving on the arena floor,
-//! pushing each other apart and trading momentum. Everything is plain `f32` arithmetic plus
+//! pushing each other apart and trading momentum, and slack ropes between them. Everything is plain `f32` arithmetic plus
 //! `sqrt` (an exact IEEE operation); anything transcendental goes through [`crate::math`].
 //!
 //! The floor plane uses `x` to the right and `y` towards the camera, so a renderer maps
@@ -279,10 +279,84 @@ pub fn collide_all(
     }
 }
 
+/// A slack rope of at most `length` between two bodies: it does nothing while slack, and once
+/// stretched pulls both back to `length` (split by mass) and takes away the speed they had apart
+/// along it, as an inelastic rope does. Returns whether it was taut.
+pub fn tether(a: &mut Body, b: &mut Body, length: f32) -> bool {
+    let delta = b.pos - a.pos;
+    let dist_sq = delta.length_squared();
+    if dist_sq <= length * length {
+        return false;
+    }
+    let dist = dist_sq.sqrt();
+    let normal = delta * (1.0 / dist);
+    let inv_a = 1.0 / a.mass;
+    let inv_b = 1.0 / b.mass;
+    let inv_sum = inv_a + inv_b;
+
+    let stretch = dist - length;
+    a.pos += normal * (stretch * inv_a / inv_sum);
+    b.pos -= normal * (stretch * inv_b / inv_sum);
+
+    let parting = (b.vel - a.vel).dot(normal);
+    if parting > 0.0 {
+        let j = parting / inv_sum;
+        a.vel += normal * (j * inv_a);
+        b.vel -= normal * (j * inv_b);
+    }
+    true
+}
+
+/// The point on the segment from `a` to `b` closest to `p`, and how far along it lies (0 at `a`,
+/// 1 at `b`).
+pub fn closest_on_segment(a: Vec2, b: Vec2, p: Vec2) -> (Vec2, f32) {
+    let ab = b - a;
+    let len_sq = ab.length_squared();
+    if len_sq < 1e-12 {
+        return (a, 0.0);
+    }
+    let t = ((p - a).dot(ab) / len_sq).clamp(0.0, 1.0);
+    (a + ab * t, t)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::checksum;
+
+    #[test]
+    fn a_slack_tether_does_nothing() {
+        let mut a = Body::new(Vec2::ZERO, 0.5, 1.0);
+        let mut b = Body::new(Vec2::new(1.5, 0.0), 0.3, 0.5);
+        b.vel = Vec2::new(3.0, 0.0);
+        assert!(!tether(&mut a, &mut b, 2.0));
+        assert_eq!(b.pos, Vec2::new(1.5, 0.0));
+        assert_eq!(b.vel, Vec2::new(3.0, 0.0));
+    }
+
+    #[test]
+    fn a_taut_tether_pulls_both_back_and_keeps_the_swing() {
+        let mut a = Body::new(Vec2::ZERO, 0.5, 1.0);
+        let mut b = Body::new(Vec2::new(3.0, 0.0), 0.3, 1.0);
+        b.vel = Vec2::new(2.0, 5.0);
+        assert!(tether(&mut a, &mut b, 2.0));
+        assert!((a.pos.distance(b.pos) - 2.0).abs() < 1e-5);
+        assert_eq!(a.pos, Vec2::new(0.5, 0.0));
+        // The outward speed is shared out; the speed across the rope stays.
+        assert!((b.vel.x - 1.0).abs() < 1e-5 && (a.vel.x - 1.0).abs() < 1e-5);
+        assert_eq!(b.vel.y, 5.0);
+    }
+
+    #[test]
+    fn closest_point_clamps_to_the_ends() {
+        let (a, b) = (Vec2::ZERO, Vec2::new(4.0, 0.0));
+        assert_eq!(
+            closest_on_segment(a, b, Vec2::new(1.0, 2.0)),
+            (Vec2::new(1.0, 0.0), 0.25)
+        );
+        assert_eq!(closest_on_segment(a, b, Vec2::new(-3.0, 1.0)), (a, 0.0));
+        assert_eq!(closest_on_segment(a, b, Vec2::new(9.0, 1.0)), (b, 1.0));
+    }
 
     #[test]
     fn head_on_equal_masses_swap_velocities() {

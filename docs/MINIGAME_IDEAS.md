@@ -101,3 +101,15 @@ All undecided. How each might fit:
 - **Top-down toy-car racing** (taken: Tabletop Rally, see ROADMAP.md, with off-screen knockout)**:** tiny cars on tracks laid across a giant table; the camera follows the leader and anyone who drops off screen is out of the round, as in Micro Machines' multiplayer.
 
 Asked about "pick the right solution" first (2026-10-21), the developer leant towards buzzer answering (the first right answer takes the puzzle, a wrong lock-in is out for that puzzle) before switching to the racer; which puzzle kinds and what 1v3 does were left open.
+
+## From the developer (2026-10-25)
+
+> "I feel like all my minigames are boring. I want something physics based."
+
+Asked what made them boring, the developer picked too little chaos, too little contact between players, and no physical feel (not too many rules). Four physics ideas were offered:
+
+- **Lantern flail** (taken: Lantern Flail, see ROADMAP.md)**:** drag a lantern on a rope and swing it into rivals on a raft.
+- **Tipping raft:** everyone on one raft balanced on a pivot; your weight tilts it and you slide downhill, with crates and barrels rolling about and a ground-pound to tip it hard. Last one dry wins. Needs torque from masses and sliding on a slope; another ring-out like Lantern Push.
+- **Bumper ball:** top-down football with a huge ball shoved, bounced and dashed into goals (2v2 natural, four goals in free-for-all, a big keeper in 1v3). Cheapest: the existing circles plus walls.
+- **Lantern siege:** knock down each other's block towers with catapult shots or boulders, Angry Birds style. Needs a rigid-body box solver (custom, or avian3d with enhanced determinism, ADR 0006): a big job on its own.
+

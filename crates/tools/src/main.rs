@@ -12,6 +12,7 @@ use minigame_firefly_catch::FireflyCatch;
 use minigame_hedge_maze::HedgeMaze;
 use minigame_lantern_derby::LanternDerby;
 use minigame_lantern_echo::LanternEcho;
+use minigame_lantern_flail::LanternFlail;
 use minigame_lantern_lottery::LanternLottery;
 use minigame_lantern_masquerade::LanternMasquerade;
 use minigame_lantern_push::LanternPush;
@@ -171,6 +172,7 @@ fn checker(id: &str) -> Option<fn(u64) -> Result<(), String>> {
         TripleJump::ID => Some(sim_check::check_all::<TripleJump>),
         PuzzleBuzzer::ID => Some(sim_check::check_all::<PuzzleBuzzer>),
         LanternMasquerade::ID => Some(sim_check::check_all::<LanternMasquerade>),
+        LanternFlail::ID => Some(sim_check::check_all::<LanternFlail>),
         _ => None,
     }
 }
@@ -195,6 +197,7 @@ fn net_checker(id: &str) -> Option<NetChecker> {
         TripleJump::ID => Some(play_over_udp::<TripleJump>),
         PuzzleBuzzer::ID => Some(play_over_udp::<PuzzleBuzzer>),
         LanternMasquerade::ID => Some(play_over_udp::<LanternMasquerade>),
+        LanternFlail::ID => Some(play_over_udp::<LanternFlail>),
         _ => None,
     }
 }
@@ -264,6 +267,7 @@ fn checker_setups(id: &str, seed: u64) -> Vec<sim_check::Setup> {
         TripleJump::ID => sim_check::setups::<TripleJump>(seed),
         PuzzleBuzzer::ID => sim_check::setups::<PuzzleBuzzer>(seed),
         LanternMasquerade::ID => sim_check::setups::<LanternMasquerade>(seed),
+        LanternFlail::ID => sim_check::setups::<LanternFlail>(seed),
         _ => Vec::new(),
     }
 }

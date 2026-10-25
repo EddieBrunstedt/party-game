@@ -9,6 +9,7 @@ mod i18n;
 mod intro;
 mod lantern_derby;
 mod lantern_echo;
+mod lantern_flail;
 mod lantern_lottery;
 mod lantern_masquerade;
 mod lantern_push;

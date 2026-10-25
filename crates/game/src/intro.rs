@@ -563,6 +563,24 @@ mod tests {
     }
 
     #[test]
+    fn lantern_flail_card_matches_the_rules() {
+        use minigame_lantern_flail::{GIANT_GOAL, PLAY_TICKS, TRIO_GOAL};
+        assert_eq!(PLAY_TICKS, 60 * TICK_HZ);
+        assert_eq!((GIANT_GOAL, TRIO_GOAL), (8, 3), "the 1v3 card says 8 and 3");
+        let teams = Format::TwoVsTwo {
+            team_of: [0, 0, 1, 1],
+        };
+        for format in [Format::FreeForAll, teams] {
+            assert!(goal("lantern-flail", &format).contains("60 seconds"));
+        }
+        let solo = goal("lantern-flail", &Format::OneVsThree { solo: Seat(0) });
+        assert!(
+            solo.contains("8 times") && solo.contains("3 times") && solo.contains("60 seconds"),
+            "{solo}"
+        );
+    }
+
+    #[test]
     fn tabletop_rally_card_matches_the_rules() {
         use minigame_tabletop_rally::WIN_POINTS;
         for key in [

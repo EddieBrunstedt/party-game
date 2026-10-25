@@ -3015,6 +3015,7 @@ dependencies = [
  "minigame-hedge-maze",
  "minigame-lantern-derby",
  "minigame-lantern-echo",
+ "minigame-lantern-flail",
  "minigame-lantern-lottery",
  "minigame-lantern-masquerade",
  "minigame-lantern-push",
@@ -4009,6 +4010,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "minigame-lantern-flail"
+version = "0.1.0"
+dependencies = [
+ "sim-check",
+ "sim-core",
+]
+
+[[package]]
 name = "minigame-lantern-lottery"
 version = "0.1.0"
 dependencies = [
@@ -4072,6 +4081,7 @@ dependencies = [
  "minigame-hedge-maze",
  "minigame-lantern-derby",
  "minigame-lantern-echo",
+ "minigame-lantern-flail",
  "minigame-lantern-lottery",
  "minigame-lantern-masquerade",
  "minigame-lantern-push",
@@ -5918,6 +5928,7 @@ dependencies = [
  "minigame-hedge-maze",
  "minigame-lantern-derby",
  "minigame-lantern-echo",
+ "minigame-lantern-flail",
  "minigame-lantern-lottery",
  "minigame-lantern-masquerade",
  "minigame-lantern-push",

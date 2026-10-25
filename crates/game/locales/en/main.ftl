@@ -143,6 +143,7 @@ minigame-tabletop-rally = Tabletop Rally
 minigame-triple-jump = Triple Jump
 minigame-puzzle-buzzer = Puzzle Buzzer
 minigame-lantern-masquerade = Lantern Masquerade
+minigame-lantern-flail = Lantern Flail
 
 ## Quick Draw
 quick-draw-title = QUICK DRAW
@@ -471,6 +472,30 @@ lantern-masquerade-time-up = Time! Most bells: { $players }
 lantern-masquerade-seeker-round = The seeker caught all three!
 lantern-masquerade-seeker-time = Time's up: the seeker takes the round!
 lantern-masquerade-trio-round = The three rang every bell!
+
+## Lantern Flail
+lantern-flail-title = LANTERN FLAIL
+lantern-flail-how = Spin the stick round to whirl the lantern on your rope, and smash it into rivals: the faster it flies, the harder it hits. Every hit you take makes the next one knock you further.
+lantern-flail-stick = run, or spin it round to whirl
+lantern-flail-a = lunge
+lantern-flail-b = hold to reel in, let go to fling out
+lantern-flail-goal = Knock rivals into the pond: a point each. Most points in 60 seconds wins!
+lantern-flail-goal-teams = Partners hold the ends of one rope with a lantern in the middle: sweep it across the raft together! Every fall of theirs is a point. Most points in 60 seconds wins!
+lantern-flail-goal-solo = { $player } is a giant with a wrecking ball: knock the three in 8 times! The three win by dunking the giant 3 times. At 60 seconds, the side nearer its goal wins.
+lantern-flail-go = SWING!
+lantern-flail-sudden-death = SUDDEN DEATH
+lantern-flail-sudden-death-sub = Level! The next fall decides.
+lantern-flail-knocked = { $by } knocked { $player } in!
+lantern-flail-fell = { $player } fell in!
+lantern-flail-points = { $points ->
+    [one] 1 point
+   *[other] { $points } points
+}
+lantern-flail-damage = damage { $damage }
+lantern-flail-in-pond = in the pond!
+lantern-flail-safe = back on!
+lantern-flail-solo-score = giant { $giant }/{ $giant_goal } : { $trio }/{ $trio_goal } the three
+lantern-flail-everyone = Everyone ties!
 
 ## Board
 board-turn-order = Turn order
