@@ -10,6 +10,7 @@ mod intro;
 mod lantern_derby;
 mod lantern_echo;
 mod lantern_lottery;
+mod lantern_masquerade;
 mod lantern_push;
 mod lantern_tower;
 mod menus;

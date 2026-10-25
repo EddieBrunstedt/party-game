@@ -3016,6 +3016,7 @@ dependencies = [
  "minigame-lantern-derby",
  "minigame-lantern-echo",
  "minigame-lantern-lottery",
+ "minigame-lantern-masquerade",
  "minigame-lantern-push",
  "minigame-lantern-tower",
  "minigame-musical-stools",
@@ -4016,6 +4017,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "minigame-lantern-masquerade"
+version = "0.1.0"
+dependencies = [
+ "sim-check",
+ "sim-core",
+]
+
+[[package]]
 name = "minigame-lantern-push"
 version = "0.1.0"
 dependencies = [
@@ -4064,6 +4073,7 @@ dependencies = [
  "minigame-lantern-derby",
  "minigame-lantern-echo",
  "minigame-lantern-lottery",
+ "minigame-lantern-masquerade",
  "minigame-lantern-push",
  "minigame-lantern-tower",
  "minigame-musical-stools",
@@ -5909,6 +5919,7 @@ dependencies = [
  "minigame-lantern-derby",
  "minigame-lantern-echo",
  "minigame-lantern-lottery",
+ "minigame-lantern-masquerade",
  "minigame-lantern-push",
  "minigame-lantern-tower",
  "minigame-musical-stools",

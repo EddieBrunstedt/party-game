@@ -534,6 +534,35 @@ mod tests {
     }
 
     #[test]
+    fn lantern_masquerade_card_matches_the_rules() {
+        use minigame_lantern_masquerade::{BELLS, DARK_TICKS, ROUNDS_TO_WIN, SEEKER_ROUND_TICKS};
+        assert_eq!(
+            (BELLS, ROUNDS_TO_WIN),
+            (5, 2),
+            "the cards say 5 bells, first to 2"
+        );
+        let teams = Format::TwoVsTwo {
+            team_of: [0, 0, 1, 1],
+        };
+        let solo = Format::OneVsThree { solo: Seat(0) };
+        for format in [Format::FreeForAll, teams, solo] {
+            let goal = goal("lantern-masquerade", &format);
+            assert!(
+                goal.contains("all 5 bells") && goal.contains("First to 2 rounds"),
+                "{goal}"
+            );
+        }
+        let solo = goal("lantern-masquerade", &solo);
+        assert_eq!(DARK_TICKS as u32, 3 * TICK_HZ);
+        assert_eq!(SEEKER_ROUND_TICKS as u32, 75 * TICK_HZ);
+        assert!(
+            solo.contains("3 seconds") && solo.contains("75 seconds"),
+            "{solo}"
+        );
+        assert!(tr!("lantern-masquerade-bells", bells = 1).ends_with("/5"));
+    }
+
+    #[test]
     fn tabletop_rally_card_matches_the_rules() {
         use minigame_tabletop_rally::WIN_POINTS;
         for key in [

@@ -142,6 +142,7 @@ minigame-lantern-derby = Lantern Derby
 minigame-tabletop-rally = Tabletop Rally
 minigame-triple-jump = Triple Jump
 minigame-puzzle-buzzer = Puzzle Buzzer
+minigame-lantern-masquerade = Lantern Masquerade
 
 ## Quick Draw
 quick-draw-title = QUICK DRAW
@@ -442,6 +443,34 @@ puzzle-buzzer-locked = locked in
 puzzle-buzzer-wrong = wrong!
 puzzle-buzzer-out = out
 puzzle-buzzer-got-it = got it!
+
+## Lantern Masquerade
+lantern-masquerade-title = LANTERN MASQUERADE
+lantern-masquerade-how = Everyone in the market looks alike, you too. Nobody is told which one they are: move and watch to find yourself! The crowd walks in straight lines and stops a while, so walk like them or stand out. Stand still under a bell and hold A to ring it. Everyone hears whose it was.
+lantern-masquerade-stick = walk (in 1v3 the seeker moves the lantern)
+lantern-masquerade-a = hold under a bell to ring it (the seeker: catch whoever's under the lantern)
+lantern-masquerade-b = strike whoever's next to you (not in 1v3)
+lantern-masquerade-goal = Ring all 5 bells, or be the last one standing: a struck player is out of the round. First to 2 rounds wins!
+lantern-masquerade-goal-teams = Ring all 5 bells with your partner (you don't know which one they are either), or be the last team standing. First to 2 rounds wins!
+lantern-masquerade-goal-solo = { $player } is the seeker. Their lantern catches whoever's under it, but catching anyone else puts it out for 3 seconds. The three of you must ring all 5 bells between you before you're all caught or 75 seconds run out. First to 2 rounds wins!
+lantern-masquerade-round = Round { $round } - first to { $needed }
+lantern-masquerade-shuffle = Find yourself!
+lantern-masquerade-go = Ring the bells!
+lantern-masquerade-go-solo = Ring the bells! The seeker is watching...
+lantern-masquerade-time = { $seconds } s
+lantern-masquerade-rounds-solo = seeker { $seeker } : { $trio } the three
+lantern-masquerade-bells = bells { $bells }/5
+lantern-masquerade-hiding = hiding
+lantern-masquerade-out = out!
+lantern-masquerade-seeker = the seeker
+lantern-masquerade-lantern-ready = lantern ready
+lantern-masquerade-lantern-dark = lantern out
+lantern-masquerade-rang-all = { $players } rang every bell!
+lantern-masquerade-last-standing = Last one standing: { $players }
+lantern-masquerade-time-up = Time! Most bells: { $players }
+lantern-masquerade-seeker-round = The seeker caught all three!
+lantern-masquerade-seeker-time = Time's up: the seeker takes the round!
+lantern-masquerade-trio-round = The three rang every bell!
 
 ## Board
 board-turn-order = Turn order
