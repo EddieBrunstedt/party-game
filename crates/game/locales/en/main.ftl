@@ -500,11 +500,11 @@ lantern-flail-everyone = Everyone ties!
 
 ## Lantern Run
 lantern-run-title = LANTERN RUN
-lantern-run-how = Steer round what comes at you. Fly in a rival's slipstream to speed up, graze past obstacles to charge your boost, and hook the glider ahead to slingshot past it. Hooked? Swing so the rope catches on an obstacle!
+lantern-run-how = Your glider flies forward by itself: steer round what comes at you. Hold A to fly faster while your meter lasts; flat out, you steer slower and ram anyone you touch. Grazing past obstacles refills the meter. Ride a rival's slipstream, or hook the glider ahead to slingshot past it. Hooked? Swing so the rope catches on an obstacle!
 lantern-run-stick = steer (you drift: push the other way to stop)
-lantern-run-a = boost: rams anyone you touch aside
+lantern-run-a = hold to fly faster, while the meter lasts
 lantern-run-b = fire the grapple at the glider ahead, hold to be towed
-lantern-run-goal = In the canyon the camera pushes you along. In the cave, fall behind it and you're out. Last glider flying wins!
+lantern-run-goal = In the canyon the camera pushes you along. In the cave, fall behind it and you're out: watch your room bar. Last glider flying wins!
 lantern-run-goal-teams = Hook your partner for a free tow that doesn't slow them. In the cave, fall behind the camera and you're out. The last team flying wins!
 lantern-run-goal-solo = { $player } flies the barge with a head start, dropping mines (A) and cutting ropes (B). The three win if any of them gets past it within 75 seconds!
 lantern-run-go = FLY!
@@ -521,7 +521,9 @@ lantern-run-is-out = out
 lantern-run-spinning = spinning!
 lantern-run-towing = towed by { $player }
 lantern-run-hooked = hooked by { $player }!
-lantern-run-boosting = boost!
+lantern-run-throttle = flat out!
+lantern-run-meter = throttle
+lantern-run-room = room
 lantern-run-slipstream = slipstream
 
 ## Board

@@ -182,7 +182,7 @@ fn hitting_an_obstacle_spins_you_out() {
 }
 
 #[test]
-fn grazing_an_obstacle_charges_the_boost() {
+fn grazing_an_obstacle_fills_the_meter() {
     let mut run = playing(2, Format::FreeForAll, vec![rock(0.0, 0.0, 12.0, 1.0)]);
     place(&mut run, 0, 1.0 + SHIP_RADIUS + 0.1, 0.0, 11.0);
     place(&mut run, 1, -6.0, 0.0, 11.0);
@@ -200,26 +200,39 @@ fn grazing_an_obstacle_charges_the_boost() {
 }
 
 #[test]
-fn a_boost_needs_a_charge_and_speeds_you_up() {
+fn holding_a_throttles_while_the_meter_lasts() {
     let mut run = playing(2, Format::FreeForAll, vec![]);
-    run.step(inputs(0, 0, 0, &[Button::A]));
-    assert_eq!(run.game.ships[0].boost, 0);
-    run.step(NONE);
-    run.game.ships[0].meter = BOOST_COST + 10;
-    run.step(inputs(0, 0, 0, &[Button::A]));
+    assert_eq!(run.game.ships[0].meter, METER_START);
+    for _ in 0..60 {
+        run.step(inputs(0, 0, 0, &[Button::A]));
+    }
     let ship = run.game.ships[0];
-    assert!(ship.boost > 0);
-    assert!(ship.meter < 100);
-    assert!(ship.speed >= CRUISE * BOOST_SPEED);
+    assert!(ship.throttle);
+    assert!(ship.speed > CRUISE * 1.2, "{}", ship.speed);
+    assert_eq!(ship.meter, METER_START - 60 * THROTTLE_BURN);
+    assert_eq!(run.game.ships[1].speed, CRUISE);
+    // Run dry and it stops.
+    for _ in 0..200 {
+        run.step(inputs(0, 0, 0, &[Button::A]));
+    }
+    let ship = run.game.ships[0];
+    assert!(!ship.throttle);
+    assert!(ship.speed < CRUISE * 1.1);
+    // Let go and the meter refills.
+    let meter = ship.meter;
+    for _ in 0..60 {
+        run.step(NONE);
+    }
+    assert!(run.game.ships[0].meter > meter + 20);
 }
 
 #[test]
-fn a_boost_rams_rivals_aside() {
+fn a_flat_out_throttle_rams_rivals_aside() {
     let mut run = playing(2, Format::FreeForAll, vec![]);
     place(&mut run, 0, 0.0, 0.0, 10.0);
     place(&mut run, 1, 0.8, 0.0, 10.0);
-    run.game.ships[0].boost = 20;
-    run.step(NONE);
+    run.game.ships[0].speed = CRUISE * 1.25;
+    run.step(inputs(0, 0, 0, &[Button::A]));
     let rival = run.game.ships[1];
     assert!(rival.body.vel.x > RAM_PUSH * 0.9);
     assert!(rival.stun > 0);
@@ -419,7 +432,7 @@ fn the_barge_drops_mines_behind_it() {
     run.step(NONE);
     run.step(inputs(0, 0, 0, &[Button::A]));
     assert_eq!(run.game.mines.len(), 1, "it has a cooldown");
-    assert_eq!(run.game.ships[0].boost, 0, "the barge doesn't boost");
+    assert!(!run.game.ships[0].throttle, "the barge doesn't throttle");
 }
 
 #[test]

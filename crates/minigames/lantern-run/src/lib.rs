@@ -6,19 +6,20 @@
 //! glider flying wins.
 //!
 //! What costs ground is hitting things: an obstacle spins you out and stalls you
-//! ([`CRASH_SPEED`]). What gains it: flying in someone's slipstream (lined up behind them), a
-//! boost (A), charged by grazing obstacles and rivals, that rams anyone it touches aside, and the
-//! grapple (B): hook the glider ahead and hold B, and it tows you while you drag it back, until
+//! ([`CRASH_SPEED`]). What gains it: the throttle (hold A to fly faster while the meter lasts;
+//! it refills by itself, and fast while grazing obstacles and rivals; flat out, you ram anyone
+//! you touch aside), flying in someone's slipstream (lined up behind them), and the grapple (B):
+//! hook the glider ahead and hold B, and it tows you while you drag it back, until
 //! you slingshot past. The one in front fights back by threading a gap so an obstacle comes
 //! between you: the rope catches on it and yanks you in, unless you let go first.
 //!
 //! Free-for-all and duel: last one flying wins; at [`PLAY_TICKS`] the furthest along does.
 //! 2v2: partners can hook each other for a tow that doesn't slow the one ahead, and a team is
 //! out when both are. 1v3: the solo flies a wide, heavy barge that starts [`HEAD_START`] ahead
-//! and drops mines behind it (A) instead of boosting, and B cuts the ropes hooked on it. It
+//! and drops mines behind it (A) instead of throttling, and B cuts the ropes hooked on it. It
 //! ploughs through obstacles, losing little, and speeds up as the three close in
 //! ([`State::barge_cruise`]), so they catch it only by taking turns in each other's slipstreams,
-//! boosting and hooking it. The camera follows the three; they win if any of them gets past the
+//! throttling and hooking it. The camera follows the three; they win if any of them gets past the
 //! barge, and the barge wins if it's still ahead after [`BARGE_TICKS`], or all three are out.
 
 use std::hash::{Hash, Hasher};
@@ -79,22 +80,30 @@ pub const GHOST_TICKS: u16 = 60;
 /// A crash also throws you off across the course this fast.
 const CRASH_THROW: f32 = 3.0;
 
-/// The boost meter, in thousandths: a boost costs [`BOOST_COST`], and it holds two.
+/// The throttle's meter, in thousandths; everyone starts with [`METER_START`]. Holding A burns
+/// [`THROTTLE_BURN`] a tick of it and raises the speed you settle at by `THROTTLE - 1` times
+/// [`CRUISE`] (on top of a slipstream), reached at [`THROTTLE_ACCEL`].
 pub const METER_MAX: u16 = 1000;
-pub const BOOST_COST: u16 = 500;
-/// It fills by itself this much every [`METER_IDLE_TICKS`]...
+pub const METER_START: u16 = 500;
+pub const THROTTLE_BURN: u16 = 5;
+pub const THROTTLE: f32 = 1.25;
+pub const THROTTLE_ACCEL: f32 = 12.0;
+/// Flat out, a glider steers with only this share of its thrust: going fast through obstacles
+/// is a risk.
+pub const THROTTLE_STEER: f32 = 0.6;
+/// The meter refills by itself this much every [`METER_IDLE_TICKS`] while you're not
+/// throttling...
 pub const METER_IDLE: u16 = 1;
-pub const METER_IDLE_TICKS: u32 = 4;
+pub const METER_IDLE_TICKS: u32 = 2;
 /// ...plus up to this much a tick grazing past an obstacle within [`GRAZE`] of it...
 pub const GRAZE: f32 = 0.7;
 pub const GRAZE_RATE: f32 = 60.0;
 /// ...and this much a tick flying alongside a rival.
 pub const RIVAL_GRAZE_RATE: u16 = 2;
 pub const RIVAL_GRAZE: f32 = 0.5;
-/// A boost holds your speed up to cruise times this for [`BOOST_TICKS`].
-pub const BOOST_SPEED: f32 = 1.5;
-pub const BOOST_TICKS: u16 = 40;
-/// A boosting glider rams rivals it touches aside this fast, spinning them for [`RAM_STUN`].
+/// A glider throttling faster than this rams rivals it touches aside at [`RAM_PUSH`], spinning
+/// them for [`RAM_STUN`].
+pub const RAM_SPEED: f32 = CRUISE * 1.15;
 pub const RAM_PUSH: f32 = 9.0;
 pub const RAM_STUN: u16 = 18;
 
@@ -119,9 +128,9 @@ pub const MISS_COOLDOWN: u16 = 30;
 /// The camera follows the leader from this far behind; it starts closing in after
 /// [`CLOSE_IN_AFTER`] and is [`WINDOW_END`] behind after another [`CLOSE_IN_TICKS`].
 pub const WINDOW_START: f32 = 18.0;
-pub const WINDOW_END: f32 = 7.0;
-pub const CLOSE_IN_AFTER: u32 = 45 * 60;
-pub const CLOSE_IN_TICKS: u32 = 40 * 60;
+pub const WINDOW_END: f32 = 5.0;
+pub const CLOSE_IN_AFTER: u32 = 35 * 60;
+pub const CLOSE_IN_TICKS: u32 = 35 * 60;
 /// In the canyon, stragglers are pushed on to this far ahead of the camera's kill line, so
 /// they reach the cave with a little room.
 pub const CANYON_CUSHION: f32 = 10.0;
@@ -132,12 +141,12 @@ pub const CANYON_CUSHION: f32 = 10.0;
 pub const BARGE_RADIUS: f32 = 0.8;
 pub const BARGE_MASS: f32 = 3.0;
 pub const BARGE_FAR: f32 = 0.94;
-pub const BARGE_NEAR: f32 = 1.20;
+pub const BARGE_NEAR: f32 = 1.197;
 pub const BARGE_EASE: f32 = 30.0;
 pub const HEAD_START: f32 = 24.0;
 /// ...ploughs through what it hits, keeping this share of its speed and spinning only for
 /// [`BARGE_STUN`]...
-pub const BARGE_CRASH_SPEED: f32 = 0.8;
+pub const BARGE_CRASH_SPEED: f32 = 0.7;
 pub const BARGE_STUN: u16 = 12;
 /// ...and wins if none of the three has got past it after this long.
 pub const BARGE_TICKS: u32 = 75 * 60;
@@ -179,8 +188,8 @@ pub struct Ship {
     /// Ticks left spinning out (unable to steer), and passing through obstacles.
     pub stun: u16,
     pub ghost: u16,
-    /// Ticks left boosting.
-    pub boost: u16,
+    /// Throttling this tick (holding A with something in the meter).
+    pub throttle: bool,
     pub meter: u16,
     pub hook: Option<Hook>,
     pub hook_cooldown: u16,
@@ -205,7 +214,7 @@ impl Hash for Ship {
         hash_f32(self.speed, state);
         self.status.hash(state);
         self.barge.hash(state);
-        (self.stun, self.ghost, self.boost, self.meter).hash(state);
+        (self.stun, self.ghost, self.throttle, self.meter).hash(state);
         self.hook.hash(state);
         (self.hook_cooldown, self.mine_cooldown, self.cut_cooldown).hash(state);
         self.cut_at.hash(state);
@@ -217,10 +226,6 @@ impl Hash for Ship {
 impl Ship {
     pub fn flying(&self) -> bool {
         self.status == Status::Flying
-    }
-
-    pub fn boosts(&self) -> u16 {
-        self.meter / BOOST_COST
     }
 }
 
@@ -425,7 +430,7 @@ impl State {
         ship.speed = (ship.speed * keep).max(MIN_SPEED);
         ship.stun = stun;
         ship.ghost = GHOST_TICKS;
-        ship.boost = 0;
+        ship.throttle = false;
         ship.body.vel = away * CRASH_THROW;
         ship.crashes += 1;
         ship.crashed_at = Some(tick);
@@ -446,11 +451,16 @@ impl State {
             let stick = Vec2::new(stick.x, -stick.y);
             ship.stun = ship.stun.saturating_sub(1);
             ship.ghost = ship.ghost.saturating_sub(1);
-            ship.boost = ship.boost.saturating_sub(1);
             ship.hook_cooldown = ship.hook_cooldown.saturating_sub(1);
             ship.mine_cooldown = ship.mine_cooldown.saturating_sub(1);
             ship.cut_cooldown = ship.cut_cooldown.saturating_sub(1);
-            if self.tick.is_multiple_of(METER_IDLE_TICKS) {
+            ship.throttle = !ship.barge
+                && ship.stun == 0
+                && input.held(Button::A)
+                && ship.meter >= THROTTLE_BURN;
+            if ship.throttle {
+                ship.meter -= THROTTLE_BURN;
+            } else if self.tick.is_multiple_of(METER_IDLE_TICKS) {
                 ship.meter = (ship.meter + METER_IDLE).min(METER_MAX);
             }
             if ship.stun == 0 {
@@ -459,23 +469,25 @@ impl State {
                 } else {
                     STEER_SPEED
                 };
-                ship.body.steer(stick, top, STEER_ACCEL);
+                let thrust = if ship.throttle {
+                    STEER_ACCEL * THROTTLE_STEER
+                } else {
+                    STEER_ACCEL
+                };
+                ship.body.steer(stick, top, thrust);
                 ship.body.integrate(0.0);
             } else {
                 ship.body.integrate(STUN_DRAG);
             }
-            if inputs.just_pressed(seat, Button::A) && ship.stun == 0 {
-                if ship.barge {
-                    if ship.mine_cooldown == 0 {
-                        ship.mine_cooldown = MINE_COOLDOWN;
-                        let behind = ship.z - BARGE_RADIUS - MINE_RADIUS * 3.0;
-                        let pos = ship.body.pos;
-                        self.mines.push(mine(pos, behind));
-                    }
-                } else if ship.meter >= BOOST_COST && ship.boost == 0 {
-                    ship.meter -= BOOST_COST;
-                    ship.boost = BOOST_TICKS;
-                }
+            if inputs.just_pressed(seat, Button::A)
+                && ship.stun == 0
+                && ship.barge
+                && ship.mine_cooldown == 0
+            {
+                ship.mine_cooldown = MINE_COOLDOWN;
+                let behind = ship.z - BARGE_RADIUS - MINE_RADIUS * 3.0;
+                let pos = ship.body.pos;
+                self.mines.push(mine(pos, behind));
             }
             let ship = &mut self.ships[seat.index()];
             if ship.barge && ship.cut_cooldown == 0 && inputs.just_pressed(seat, Button::B) {
@@ -509,7 +521,7 @@ impl State {
         }
     }
 
-    /// Slipstreams, boosts and ropes change speeds along the course; then everyone moves on.
+    /// Slipstreams, throttles and ropes change speeds along the course; then everyone moves on.
     fn fly(&mut self) {
         let seats: Vec<Seat> = self.flying().collect();
         for &seat in &seats {
@@ -531,6 +543,12 @@ impl State {
             } else {
                 CRUISE
             };
+            // The throttle adds to a slipstream rather than multiplying it.
+            let (cruise, recover) = if me.throttle {
+                (cruise + CRUISE * (THROTTLE - 1.0), THROTTLE_ACCEL)
+            } else {
+                (cruise, SPEED_RECOVER)
+            };
             // While a rope joins two gliders, it sets their speeds.
             let roped = me.hook.is_some()
                 || seats
@@ -541,10 +559,8 @@ impl State {
             if roped {
                 continue;
             }
-            if ship.boost > 0 {
-                ship.speed = ship.speed.max(CRUISE * BOOST_SPEED);
-            } else if ship.speed < cruise {
-                ship.speed = (ship.speed + SPEED_RECOVER * DT).min(cruise);
+            if ship.speed < cruise {
+                ship.speed = (ship.speed + recover * DT).min(cruise);
             } else {
                 ship.speed = (ship.speed - SPEED_BLEED * DT).max(cruise);
             }
@@ -584,7 +600,7 @@ impl State {
         }
     }
 
-    /// Gliders level with each other bump apart across the course, and a boost rams.
+    /// Gliders level with each other bump apart across the course, and a flat-out throttle rams.
     fn bump(&mut self) {
         let seats: Vec<Seat> = self.flying().collect();
         for (i, &a) in seats.iter().enumerate() {
@@ -598,10 +614,11 @@ impl State {
                     continue;
                 };
                 if !self.allies(a, b) {
-                    if sa.boost > 0 && sb.boost == 0 && !sb.barge {
+                    let rams = |s: &Ship| s.throttle && s.speed > RAM_SPEED;
+                    if rams(&sa) && !rams(&sb) && !sb.barge {
                         sb.body.vel = contact.normal * RAM_PUSH;
                         sb.stun = sb.stun.max(RAM_STUN);
-                    } else if sb.boost > 0 && sa.boost == 0 && !sa.barge {
+                    } else if rams(&sb) && !rams(&sa) && !sa.barge {
                         sa.body.vel = -contact.normal * RAM_PUSH;
                         sa.stun = sa.stun.max(RAM_STUN);
                     }
@@ -610,7 +627,7 @@ impl State {
                 self.ships[b.index()] = sb;
             }
         }
-        // Flying alongside a rival charges the boost.
+        // Flying alongside a rival fills the meter.
         for &a in &seats {
             let me = self.ship(a);
             let alongside = seats.iter().any(|&b| {
@@ -849,8 +866,8 @@ impl Minigame for LanternRun {
             barge: false,
             stun: 0,
             ghost: 0,
-            boost: 0,
-            meter: 0,
+            throttle: false,
+            meter: METER_START,
             hook: None,
             hook_cooldown: 0,
             mine_cooldown: 0,

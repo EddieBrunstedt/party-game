@@ -27,8 +27,11 @@ pub(crate) struct Skill {
     snag_care: Option<f32>,
     /// Hooked, it steers so the rope catches on something.
     snags: bool,
-    /// Chance per window of boosting (or dropping a mine) when it's worth it.
+    /// Chance per window of opening the throttle (or dropping a mine) when it's worth it.
     boost_percent: u32,
+    /// Throttles whatever's coming when the kill line is within this share of the window
+    /// behind it.
+    danger_share: f32,
     /// How hard it keeps clear of rivals level with it, and of boosting rivals coming up.
     crowd_care: f32,
     /// The barge cuts a rope this many ticks after it catches.
@@ -48,7 +51,8 @@ pub(crate) fn skill(difficulty: Difficulty) -> Skill {
             hook_percent: 15,
             snag_care: None,
             snags: false,
-            boost_percent: 20,
+            boost_percent: 25,
+            danger_share: 0.0,
             crowd_care: 0.0,
             cut_delay: 50,
         },
@@ -63,7 +67,8 @@ pub(crate) fn skill(difficulty: Difficulty) -> Skill {
             hook_percent: 35,
             snag_care: Some(0.15),
             snags: true,
-            boost_percent: 45,
+            boost_percent: 70,
+            danger_share: 0.35,
             crowd_care: 0.8,
             cut_delay: 25,
         },
@@ -78,7 +83,8 @@ pub(crate) fn skill(difficulty: Difficulty) -> Skill {
             hook_percent: 60,
             snag_care: Some(0.5),
             snags: true,
-            boost_percent: 75,
+            boost_percent: 90,
+            danger_share: 0.5,
             crowd_care: 2.0,
             cut_delay: 10,
         },
@@ -151,7 +157,7 @@ fn cost(state: &State, seat: Seat, skill: &Skill, upcoming: &[Obstacle], p: Vec2
             }
             continue;
         }
-        let level = gap.abs() < 2.5 || (them.boost > 0 && (-8.0..0.0).contains(&gap));
+        let level = gap.abs() < 2.5 || (them.throttle && (-8.0..0.0).contains(&gap));
         if level && !state.allies(seat, other) {
             cost += skill.crowd_care * (1.0 - apart / 2.0).max(0.0);
         }
@@ -234,7 +240,12 @@ fn steer_to(ship: &Ship, target: Vec2) -> Vec2 {
     } else {
         STEER_SPEED
     };
-    let speed = (2.0 * STEER_ACCEL * 0.8 * distance)
+    let thrust = if ship.throttle {
+        STEER_ACCEL * THROTTLE_STEER
+    } else {
+        STEER_ACCEL
+    };
+    let speed = (2.0 * thrust * 0.8 * distance)
         .sqrt()
         .min(distance * 5.0)
         .min(top);
@@ -246,17 +257,23 @@ pub(crate) fn input(state: &State, seat: Seat, difficulty: Difficulty) -> Input 
     let mut skill = skill(difficulty);
     if me.barge {
         // Three chasers at a level are clumsier together than one barge at it: an Easy barge
-        // goes easier on them, and a Normal one a little harder.
+        // goes easier on them, and Normal and Hard ones harder.
         match difficulty {
             Difficulty::Easy => {
-                skill.cut_delay = 80;
-                skill.boost_percent = 10;
+                skill.cut_delay = 120;
+                skill.boost_percent = 5;
+                skill.lapse_percent = 25;
             }
             Difficulty::Normal => {
                 skill.cut_delay = 20;
                 skill.boost_percent = 55;
             }
-            Difficulty::Hard => {}
+            Difficulty::Hard => {
+                skill.cut_delay = 6;
+                skill.boost_percent = 100;
+                skill.lookahead = 2.2;
+                skill.aim_noise = 0.05;
+            }
         }
     }
     let rolls = rolls(state, seat, &skill);
@@ -277,7 +294,7 @@ pub(crate) fn input(state: &State, seat: Seat, difficulty: Difficulty) -> Input 
         let chaser = state.flying().any(|s| {
             let them = state.ship(s);
             let gap = me.z - them.z;
-            s != seat && (3.0..14.0).contains(&gap) && them.body.pos.distance(me.body.pos) < 1.8
+            s != seat && (3.0..30.0).contains(&gap) && them.body.pos.distance(me.body.pos) < 1.8
         });
         if chaser && me.mine_cooldown == 0 && rolls.boost {
             input.set(Button::A, true);
@@ -293,12 +310,16 @@ pub(crate) fn input(state: &State, seat: Seat, difficulty: Difficulty) -> Input 
         }
         return input;
     }
-    if me.meter >= BOOST_COST && me.boost == 0 && rolls.boost && ahead_clear {
-        let leader = state.leader_z().unwrap_or(me.z);
-        if leader - me.z > 2.0 || state.window() - (leader - state.camera_z) < 3.0 {
-            input.set(Button::A, true);
-        }
-    }
+    // Fly flat out while the way ahead is clear (flat out, it steers sluggishly), and near the
+    // kill line whatever's coming; once open, keep it open while that holds.
+    let danger = me.z - state.camera_z < state.window() * skill.danger_share;
+    let wants = danger || ahead_clear;
+    let throttle = if me.throttle {
+        wants
+    } else {
+        wants && rolls.boost && me.meter >= 150
+    };
+    input.set(Button::A, throttle);
     match me.hook {
         Some(hook) => {
             let them = state.ship(hook.target);

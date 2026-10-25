@@ -14,8 +14,8 @@ use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use minigame_lantern_run::course::CAVE_Z;
 use minigame_lantern_run::{
-    BOOST_COST, CLOSE_IN_AFTER, CRUISE, GHOST_TICKS, LanternRun, METER_MAX, MINE_RADIUS, Obstacle,
-    Phase, Shape, State, Status, half_extents,
+    CLOSE_IN_AFTER, CRUISE, GHOST_TICKS, LanternRun, METER_MAX, MINE_RADIUS, Obstacle, Phase,
+    Shape, State, Status, half_extents,
 };
 use sim_core::physics::Vec2 as SimVec2;
 use sim_core::{Format, Seat, TICK_HZ};
@@ -109,9 +109,9 @@ fn react(
                 sfx.play_varied(Sound::Rebound, variant);
             }
         }
-        if is.boost > was.boost {
+        if is.throttle && !was.throttle {
             sfx.play_varied(Sound::Dash, variant);
-            spark(at, hdr(seat_color(seat), 5.0));
+            spark(at, hdr(seat_color(seat), 3.0));
         }
         if was.hook.is_none() && is.hook.is_some() {
             sfx.play_varied(Sound::Brace, variant);
@@ -127,7 +127,7 @@ fn react(
             sfx.play_varied(Sound::Rebound, variant);
         }
         if is.stun > was.stun && is.crashes == was.crashes {
-            // Rammed aside by a boost.
+            // Rammed aside by a glider flat out.
             sfx.play_varied(Sound::Hit, variant + 3);
             spark(at, hdr(LinearRgba::WHITE, 4.0));
         }
@@ -254,11 +254,11 @@ enum HudText {
     SeatPanel(Seat),
 }
 
-/// One of a seat's two boost cells, filled by its meter.
+/// A bar in a seat's panel: its throttle's meter, or how much room it has before the kill line.
 #[derive(Component)]
-struct BoostCell {
-    seat: Seat,
-    cell: u16,
+enum PanelBar {
+    Meter(Seat),
+    Room(Seat),
 }
 
 fn spawn_scene(
@@ -892,8 +892,8 @@ fn animate_ships(
         let celebrating = winners.contains(&seat) && is.flying();
         let glow = match is.status {
             Status::Flying if celebrating => 6.0 + (now * 8.0).sin() * 2.0,
-            Status::Flying if is.boost > 0 => 7.0,
-            Status::Flying => 2.5 + is.boosts() as f32 * 0.8,
+            Status::Flying if is.throttle => 6.0,
+            Status::Flying => 2.5 + is.meter as f32 / METER_MAX as f32 * 1.5,
             _ => 0.6,
         };
         if let Some(mut material) = materials.get_mut(&view.material) {
@@ -1193,34 +1193,49 @@ fn spawn_hud(mut commands: Commands, active: Res<ActiveRun<LanternRun>>) {
                     if game.ship(seat).barge {
                         return;
                     }
-                    // Two boost cells side by side.
-                    panel
-                        .spawn(Node {
-                            column_gap: Val::Px(4.0),
-                            ..default()
-                        })
-                        .with_children(|cells| {
-                            for cell in 0..2 {
-                                cells
-                                    .spawn((
-                                        Node {
-                                            width: Val::Px(80.0),
-                                            height: Val::Px(8.0),
-                                            ..default()
-                                        },
-                                        BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.15)),
-                                    ))
-                                    .with_child((
-                                        BoostCell { seat, cell },
-                                        Node {
-                                            width: Val::Percent(0.0),
-                                            height: Val::Percent(100.0),
-                                            ..default()
-                                        },
-                                        BackgroundColor(Color::from(seat_color(seat))),
-                                    ));
-                            }
-                        });
+                    for (caption, bar, color) in [
+                        (
+                            tr!("lantern-run-meter"),
+                            PanelBar::Meter(seat),
+                            Color::from(seat_color(seat)),
+                        ),
+                        (tr!("lantern-run-room"), PanelBar::Room(seat), Color::WHITE),
+                    ] {
+                        panel
+                            .spawn(Node {
+                                column_gap: Val::Px(6.0),
+                                align_items: AlignItems::Center,
+                                ..default()
+                            })
+                            .with_children(|row| {
+                                row.spawn((
+                                    Text::new(caption),
+                                    TextFont::from_font_size(12.0),
+                                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.75)),
+                                    Node {
+                                        width: Val::Px(62.0),
+                                        ..default()
+                                    },
+                                ));
+                                row.spawn((
+                                    Node {
+                                        width: Val::Px(100.0),
+                                        height: Val::Px(8.0),
+                                        ..default()
+                                    },
+                                    BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.15)),
+                                ))
+                                .with_child((
+                                    bar,
+                                    Node {
+                                        width: Val::Percent(0.0),
+                                        height: Val::Percent(100.0),
+                                        ..default()
+                                    },
+                                    BackgroundColor(color),
+                                ));
+                            });
+                    }
                 });
             }
         });
@@ -1320,8 +1335,8 @@ fn status_text(game: &State, seat: Seat) -> String {
                 tr!("lantern-run-towing", player = seat_label(hook.target))
             } else if let Some(by) = hooked_by {
                 tr!("lantern-run-hooked", player = seat_label(by))
-            } else if ship.boost > 0 {
-                tr!("lantern-run-boosting")
+            } else if ship.throttle {
+                tr!("lantern-run-throttle")
             } else if ship.drafting {
                 tr!("lantern-run-slipstream")
             } else if ship.barge {
@@ -1337,7 +1352,8 @@ fn update_hud(
     active: Res<ActiveRun<LanternRun>>,
     seats: Res<Seats>,
     mut texts: Query<(&HudText, &mut Text)>,
-    mut cells: Query<(&BoostCell, &mut Node)>,
+    time: Res<Time>,
+    mut bars: Query<(&PanelBar, &mut Node, &mut BackgroundColor)>,
 ) {
     let (title, subtitle) = banner_text(&active);
     let game = &active.run.game;
@@ -1365,10 +1381,32 @@ fn update_hud(
             }
         };
     }
-    for (cell, mut node) in &mut cells {
-        let meter = game.ship(cell.seat).meter.min(METER_MAX);
-        let fill = (meter.saturating_sub(cell.cell * BOOST_COST)).min(BOOST_COST);
-        node.width = Val::Percent(fill as f32 / BOOST_COST as f32 * 100.0);
+    let deadly = game.camera_z >= CAVE_Z;
+    let pulse = (time.elapsed_secs() * 10.0).sin() * 0.5 + 0.5;
+    for (bar, mut node, mut color) in &mut bars {
+        match *bar {
+            PanelBar::Meter(seat) => {
+                let meter = game.ship(seat).meter.min(METER_MAX);
+                node.width = Val::Percent(meter as f32 / METER_MAX as f32 * 100.0);
+            }
+            PanelBar::Room(seat) => {
+                let ship = game.ship(seat);
+                let room = if ship.flying() {
+                    ((ship.z - game.camera_z) / game.window()).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                node.width = Val::Percent(room * 100.0);
+                // Red and flashing once the kill line is close behind you in the cave.
+                color.0 = if !deadly {
+                    Color::from(PUSH)
+                } else if room < 0.3 {
+                    Color::srgb(1.0, 0.15 + pulse * 0.5, 0.1 + pulse * 0.4)
+                } else {
+                    Color::srgb(1.0 - room * 0.6, 0.9, 0.5)
+                };
+            }
+        }
     }
 }
 
