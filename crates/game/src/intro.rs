@@ -581,6 +581,14 @@ mod tests {
     }
 
     #[test]
+    fn lantern_run_card_matches_the_rules() {
+        use minigame_lantern_run::BARGE_TICKS;
+        assert_eq!(BARGE_TICKS, 75 * TICK_HZ, "the 1v3 card says 75 seconds");
+        let solo = goal("lantern-run", &Format::OneVsThree { solo: Seat(0) });
+        assert!(solo.contains("75 seconds"), "{solo}");
+    }
+
+    #[test]
     fn tabletop_rally_card_matches_the_rules() {
         use minigame_tabletop_rally::WIN_POINTS;
         for key in [

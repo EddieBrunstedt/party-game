@@ -13,6 +13,7 @@ mod lantern_flail;
 mod lantern_lottery;
 mod lantern_masquerade;
 mod lantern_push;
+mod lantern_run;
 mod lantern_tower;
 mod menus;
 mod minigames;

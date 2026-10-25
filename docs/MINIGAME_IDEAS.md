@@ -113,3 +113,9 @@ Asked what made them boring, the developer picked too little chaos, too little c
 - **Bumper ball:** top-down football with a huge ball shoved, bounced and dashed into goals (2v2 natural, four goals in free-for-all, a big keeper in 1v3). Cheapest: the existing circles plus walls.
 - **Lantern siege:** knock down each other's block towers with catapult shots or boulders, Angry Birds style. Needs a rigid-body box solver (custom, or avian3d with enhanced determinism, ADR 0006): a big job on its own.
 
+
+## From the developer (2026-10-25, again)
+
+> "I want another minigame. Something physics-based, but not on a platform where we push peoepl off. Maybe someting where we are flying ships? Maybe with camera behind us, we are flying forward, and there are obstacles that we have to dodge, and maybe after a while we fly into a tunnel, and the tunnel becomes smaller and smaller. And some element of screwing with your opponents. Maybe something a tad deeper than just pushing each other, but I can't come up with anything"
+
+- **Tunnel flyer** (taken: Lantern Run, see ROADMAP.md)**:** gliders race forward past obstacles, from a canyon into a narrowing cave, with a chase camera whose kill line puts stragglers out. The mischief offered and taken: slipstreams (leading isn't automatically best), a grapple that slingshots you past whoever you hook while the one ahead tries to snag the rope on an obstacle, and a boost charged by grazing that rams. Not taken: lantern mines for everyone (the leader attacks backwards), which survives as the 1v3 barge's weapon; and A as an air brake (drop back on purpose, let someone pass, then hook them).

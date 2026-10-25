@@ -10,6 +10,7 @@ use minigame_lantern_flail::LanternFlail;
 use minigame_lantern_lottery::LanternLottery;
 use minigame_lantern_masquerade::LanternMasquerade;
 use minigame_lantern_push::LanternPush;
+use minigame_lantern_run::LanternRun;
 use minigame_lantern_tower::LanternTower;
 use minigame_musical_stools::MusicalStools;
 use minigame_puzzle_buzzer::PuzzleBuzzer;
@@ -22,8 +23,8 @@ use sim_core::{Minigame, MinigameEntry};
 use crate::runner::MinigamePlugin;
 use crate::{
     firefly_catch, hedge_maze, lantern_derby, lantern_echo, lantern_flail, lantern_lottery,
-    lantern_masquerade, lantern_push, lantern_tower, musical_stools, puzzle_buzzer, quick_draw,
-    sky_lanterns, tabletop_rally, triple_jump,
+    lantern_masquerade, lantern_push, lantern_run, lantern_tower, musical_stools, puzzle_buzzer,
+    quick_draw, sky_lanterns, tabletop_rally, triple_jump,
 };
 
 /// Ids of the minigames this client can show.
@@ -43,6 +44,7 @@ pub const SHOWN: &[&str] = &[
     PuzzleBuzzer::ID,
     LanternMasquerade::ID,
     LanternFlail::ID,
+    LanternRun::ID,
 ];
 
 /// The registry entries this client can show, in registry order: what the board may pick from.
@@ -120,6 +122,11 @@ impl Plugin for MinigamesPlugin {
                 MinigamePlugin::<LanternFlail>::default(),
                 lantern_flail::LanternFlailViewPlugin,
             ),
+        ));
+        // Plugin tuples stop at 15.
+        app.add_plugins((
+            MinigamePlugin::<LanternRun>::default(),
+            lantern_run::LanternRunViewPlugin,
         ));
     }
 }

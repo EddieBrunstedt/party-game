@@ -21,6 +21,7 @@ minigame-triple-jump.workspace = true
 minigame-puzzle-buzzer.workspace = true
 minigame-lantern-masquerade.workspace = true
 minigame-lantern-flail.workspace = true
+minigame-lantern-run.workspace = true
 minigame-registry.workspace = true
 sim-board.workspace = true
 net.workspace = true
